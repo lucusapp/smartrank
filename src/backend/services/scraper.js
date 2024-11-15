@@ -1,63 +1,60 @@
 // backend/services/scraper.js
 const puppeteer = require("puppeteer");
 
-async function scrapeProductDetails(productUrl) {
-  const browser = await puppeteer.launch({ headless: true });
+
+
+async function scrapeListing(listingUrl) {
+  
+
+  const browser = await puppeteer.launch();
   const page = await browser.newPage();
+  await page.goto(listingUrl, { waitUntil: "domcontentloaded" });
 
-  try {
-    await page.goto(productUrl, { waitUntil: "networkidle2" });
-    await page.waitForSelector(".item-detail_ItemDetail__description__7rXXT");
+  const productUrls = await page.evaluate(() => {
+    return Array.from(document.querySelectorAll(".ItemCard a"))
+      .map((el) => el.href)
+      .filter((url) => url.includes("/item/"));
+  });
 
-    const productDetails = await page.evaluate(() => {
-      const getTextContent = (selector) => {
-        const element = document.querySelector(selector);
-        return element ? element.innerText.trim() : null;
-      };
-
-      const attributes = Array.from(document.querySelectorAll('.item-detail-characteristics-details_CharacteristicsDetails__attribute__Gzko0'));
-      const values = Array.from(document.querySelectorAll('.item-detail-characteristics-details_CharacteristicsDetails__value__0pdJu'));
-
-      const details = {};
-
-      attributes.forEach((attribute, index) => {
-        const label = attribute.innerText.trim();
-        const value = values[index]?.innerText.trim();
-        
-        switch (label) {
-          case "Estado":
-            details.status = value;
-            break;
-          case "Marca":
-            details.brand = value;
-            break;
-          case "Modelo":
-            details.model = value;
-            break;
-          case "Color":
-            details.color = value;
-            break;
-          case "Capacidad de almacenamiento":
-            details.storage = value;
-            break;
-          default:
-            break;
-        }
-      });
-
-      details.description = getTextContent(".item-detail_ItemDetail__description__7rXXT");
-
-      return details;
-    });
-
-    await browser.close();
-    return productDetails;
-
-  } catch (error) {
-    console.error("Error scraping product details:", error);
-    await browser.close();
-    throw error;
-  }
+  await browser.close();
+  return productUrls;
 }
 
-module.exports = { scrapeProductDetails }
+async function scrapeProductDetails(productUrl) {
+  const browser = await puppeteer.launch();
+  const page = await browser.newPage();
+  await page.goto(productUrl, { waitUntil: "domcontentloaded" });
+  const html = await page.content();
+  console.log(html);
+
+  const productDetails = await page.evaluate(() => {
+    const estado = document.querySelector("[class*='CharacteristicsDetails__attribute']:nth-of-type(1)")?.nextElementSibling?.innerText || "";
+    const marca = document.querySelector("[class*='CharacteristicsDetails__attribute']:nth-of-type(2)")?.nextElementSibling?.innerText || "";
+    const modelo = document.querySelector("[class*='CharacteristicsDetails__attribute']:nth-of-type(3)")?.nextElementSibling?.innerText || "";
+    const color = document.querySelector("[class*='CharacteristicsDetails__attribute']:nth-of-type(4)")?.nextElementSibling?.innerText || "";
+    const capacidad = document.querySelector("[class*='CharacteristicsDetails__attribute']:nth-of-type(5)")?.nextElementSibling?.innerText || "";
+    const descripcion = document.querySelector(".item-detail_ItemDetail__description")?.innerText || "";
+    return { estado, marca, modelo, color, capacidad, descripcion };
+  });
+
+  await browser.close();
+  return productDetails;
+}
+
+async function scrapeWallapop(modelUrl) {
+  const productUrls = await scrapeListing(modelUrl);
+
+  const products = [];
+  for (const url of productUrls) {
+    try {
+      const details = await scrapeProductDetails(url);
+      products.push(details);
+    } catch (error) {
+      console.error(`Error scraping product at ${url}:`, error);
+    }
+  }
+
+  return products;
+}
+
+module.exports = { scrapeWallapop, scrapeProductDetails };
