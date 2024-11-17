@@ -10,6 +10,12 @@ async function scrapeListing(listingUrl) {
   const page = await browser.newPage();
   await page.goto(listingUrl, { waitUntil: "domcontentloaded" });
 
+
+
+
+
+  
+
   const productUrls = await page.evaluate(() => {
     return Array.from(document.querySelectorAll(".ItemCard a"))
       .map((el) => el.href)
@@ -27,9 +33,12 @@ async function scrapeProductDetails(productUrl) {
   if (!productUrl || !productUrl.startsWith("http")) {
     throw new Error("URL no válida: " + productUrl);
   }
-  await page.goto(productUrl, { waitUntil: "domcontentloaded" });
+  //await page.goto(productUrl, { waitUntil: "domcontentloaded" });
 
-
+  await page.goto(productUrl, { waitUntil: "networkidle2" }); // Espera a que se completen las solicitudes de red
+  await page.waitForSelector(".item-detail-characteristics-details_CharacteristicsDetails__attribute__Gzko0"); // Selector de un elemento visible cuando la página está completamente cargada
+  const html = await page.content();
+  console.log(html);
 
 
 
