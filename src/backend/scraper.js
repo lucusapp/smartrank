@@ -1,4 +1,4 @@
-const puppeteer = require("puppeteer");
+//const puppeteer = require("puppeteer");
 
 // async function scrapeWallapop(mobileModel) {
 //   const browser = await puppeteer.launch({ headless: true });
@@ -44,43 +44,34 @@ const puppeteer = require("puppeteer");
 
 
 
-const scrapeWallapop = async (model) => {
-  
-  try {
-    console.log(`Scraping model: ${model}`);
-    const url = `https://es.wallapop.com/search?kws=${model}`;
-    console.log(`URL generated: ${url}`);
+const puppeteer = require("puppeteer");
+const { scrapeProductDetails } = require("./services/scraper");
 
-    const browser = await puppeteer.launch();
-    const page = await browser.newPage();
+async function scrapeWallapop(model) {
+  const browser = await puppeteer.launch();
+  const page = await browser.newPage();
 
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    console.log("Page loaded");
+  const searchUrl = `https://es.wallapop.com/search?kws=${encodeURIComponent(model)}`;
+  await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
 
-    const productLinks = await page.$$eval(".ItemCard a", (anchors) =>
-      anchors.map((a) => a.href)
-    );
+  const productLinks = await page.evaluate(() => {
+    return Array.from(
+      document.querySelectorAll("a[data-test='item-card-container']") // Ajusta el selector si es necesario
+    ).map((link) => link.href);
+  });
 
-    console.log(`Found ${productLinks.length} links`);
-
-    const productDetails = [];
-    for (const link of productLinks) {
-      try {
-        const details = await scrapeProductDetails(link);
-        productDetails.push(details);
-      } catch (error) {
-        console.error(`Error scraping product at ${link}:`, error.message);
-      }
+  const detailedProducts = [];
+  for (const link of productLinks) {
+    try {
+      const details = await scrapeProductDetails(link);
+      detailedProducts.push({ url: link, ...details });
+    } catch (error) {
+      console.error(`Error scraping product details for ${link}:`, error);
     }
-
-    await browser.close();
-    return productDetails;
-  } catch (error) {
-    console.error("Error in scrapeWallapop:", error.message);
-    throw new Error(`Failed to scrape Wallapop: ${error.message}`);
   }
-};
 
+  await browser.close();
+  return detailedProducts;
+}
 
-// Prueba la función
-scrapeWallapop("iphone").then(data => console.log(data));
+module.exports = { scrapeWallapop };
