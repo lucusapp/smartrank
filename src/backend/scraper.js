@@ -51,8 +51,13 @@ async function scrapeWallapop(model) {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
 
-  const searchUrl = `https://es.wallapop.com/search?kws=${encodeURIComponent(model)}`;
+  //const searchUrl = `https://es.wallapop.com/search?kws=${encodeURIComponent(model)}`;
+  const searchUrl = `https://es.wallapop.com/app/search?filters_source=search_box&keywords=oppo%20a53s&latitude=42.5137987&longitude=-8.8128925`;
   await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector(".ItemCardList__item"); // Selector de un elemento visible cuando la página está completamente cargada
+  const html = await page.content();
+  console.log(html);
+
 
   const productLinks = await page.evaluate(() => {
     return Array.from(
