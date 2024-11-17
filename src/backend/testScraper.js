@@ -2,7 +2,7 @@
 const { scrapeProductDetails } = require("./services/scraper");
 
 async function test() {
-  const url = "https://es.wallapop.com/search?kws=oppo+a52s"; // Asegúrate de que esta URL devuelva productos relevantes
+  const url = "https://es.wallapop.com/item/oppo-a53-1070031706"; // Asegúrate de que esta URL devuelva productos relevantes
   try {
     const result = await scrapeProductDetails(url);
     console.log("Resultados de scrapeo:", result);
