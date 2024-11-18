@@ -21,5 +21,6 @@
   "bugs": {
     "url": "https://github.com/lucusapp/smartrank/issues"
   },
-  "homepage": "https://github.com/lucusapp/smartrank#readme"
+  "homepage": "https://github.com/lucusapp/smartrank#readme",
+  "keywords": []
 }
