@@ -45,12 +45,12 @@ async function scrapeProductDetails(productUrl) {
   await page.goto(productUrl, { waitUntil: "domcontentloaded" });
 
   const productDetails = await page.evaluate(() => {
-    const estado = document.querySelector(".row.mb-2:nth-of-type(1) .item-detail-characteristics-details_CharacteristicsDetails__value__0pdJu")?.innerText || "";
-    const marca = document.querySelector(".row.mb-2:nth-of-type(2) .item-detail-characteristics-details_CharacteristicsDetails__value__0pdJu")?.innerText || "";
-    const modelo = document.querySelector(".row.mb-2:nth-of-type(3) .item-detail-characteristics-details_CharacteristicsDetails__value__0pdJu")?.innerText || "";
-    const color = document.querySelector(".row.mb-2:nth-of-type(4) .item-detail-characteristics-details_CharacteristicsDetails__value__0pdJu")?.innerText || "";
-    const capacidad = document.querySelector(".row.mb-2:nth-of-type(5) .item-detail-characteristics-details_CharacteristicsDetails__value__0pdJu")?.innerText || "";
-    const descripcion = document.querySelector(".item-detail_ItemDetail__description__7rXXT")?.innerText || ""; // Ajustar si es dinámico
+    const estado = document.querySelector(".row.mb-2:nth-of-type(1) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
+    const marca = document.querySelector(".row.mb-2:nth-of-type(2) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
+    const modelo = document.querySelector(".row.mb-2:nth-of-type(3) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
+    const color = document.querySelector(".row.mb-2:nth-of-type(4) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
+    const capacidad = document.querySelector(".row.mb-2:nth-of-type(5) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
+    const descripcion = document.querySelector(".item-detail_ItemDetail__description")?.innerText || ""; // Ajustar si es dinámico
     return { estado, marca, modelo, color, capacidad, descripcion };
   });
 
