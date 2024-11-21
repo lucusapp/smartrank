@@ -27,36 +27,42 @@ async function scrapeListing(listingUrl) {
 }
 
 async function scrapeProductDetails(productUrl) {
-  const browser = await puppeteer.launch();
+  const browser = await puppeteer.launch({ headless: true });
   const page = await browser.newPage();
-  console.log("Navegando a URL:", productUrl);
-  if (!productUrl || !productUrl.startsWith("http")) {
-    throw new Error("URL no válida: " + productUrl);
+
+  try {
+      console.log(`Navegando a la URL: ${productUrl}`);
+      await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+
+      const productDetails = await page.evaluate(() => {
+          const getDetailValue = (labelText) => {
+              const label = Array.from(document.querySelectorAll(".item-detail-characteristics-details_CharacteristicsDetails__attribute__Gzko0"))
+                  .find((el) => el.textContent.trim() === labelText);
+              return label?.nextElementSibling?.textContent.trim() || "";
+          };
+
+          const estado = getDetailValue("Estado");
+          const marca = getDetailValue("Marca");
+          const modelo = getDetailValue("Modelo");
+          const color = getDetailValue("Color");
+          const capacidad = getDetailValue("Capacidad de almacenamiento");
+
+          const descripcion = document.querySelector(".item-detail_ItemDetail__description__7rXXT")?.textContent.trim() || "";
+
+          return { estado, marca, modelo, color, capacidad, descripcion };
+      });
+
+      console.log("Datos del producto extraídos:", productDetails);
+      await browser.close();
+      return productDetails;
+
+  } catch (error) {
+      console.error(`Error scrapeando los detalles del producto en ${productUrl}:`, error);
+      await browser.close();
+      return null;
   }
-  //await page.goto(productUrl, { waitUntil: "domcontentloaded" });
-
-  await page.goto(productUrl, { waitUntil: "networkidle2" }); // Espera a que se completen las solicitudes de red
-  await page.waitForSelector(".item-detail-characteristics-details_CharacteristicsDetails__attribute__Gzko0"); // Selector de un elemento visible cuando la página está completamente cargada
-  const html = await page.content();
-  console.log(html);
-
-
-
-  await page.goto(productUrl, { waitUntil: "domcontentloaded" });
-
-  const productDetails = await page.evaluate(() => {
-    const estado = document.querySelector(".row.mb-2:nth-of-type(1) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
-    const marca = document.querySelector(".row.mb-2:nth-of-type(2) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
-    const modelo = document.querySelector(".row.mb-2:nth-of-type(3) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
-    const color = document.querySelector(".row.mb-2:nth-of-type(4) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
-    const capacidad = document.querySelector(".row.mb-2:nth-of-type(5) .item-detail-characteristics-details_CharacteristicsDetails")?.innerText || "";
-    const descripcion = document.querySelector(".item-detail_ItemDetail__description")?.innerText || ""; // Ajustar si es dinámico
-    return { estado, marca, modelo, color, capacidad, descripcion };
-  });
-
-  await browser.close();
-  return productDetails;
 }
+
 
 async function scrapeWallapop(modelUrl) {
   const productUrls = await scrapeListing(modelUrl);
