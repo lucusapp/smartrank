@@ -1,5 +1,7 @@
 // backend/services/scraper.js
-const puppeteer = require("puppeteer");
+import puppeteer from "puppeteer";
+import { updateArticle }   from "./articleTracker.js";
+import { saveScrapedProduct } from "./firestoreService.js";
 
 
 
@@ -9,11 +11,6 @@ async function scrapeListing(listingUrl) {
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
   await page.goto(listingUrl, { waitUntil: "domcontentloaded" });
-
-
-
-
-
   
 
   const productUrls = await page.evaluate(() => {
@@ -26,6 +23,8 @@ async function scrapeListing(listingUrl) {
   return productUrls;
 }
 
+
+
 async function scrapeProductDetails(productUrl) {
   const browser = await puppeteer.launch({ headless: true });
   const page = await browser.newPage();
@@ -33,6 +32,10 @@ async function scrapeProductDetails(productUrl) {
   try {
       console.log(`Navegando a la URL: ${productUrl}`);
       await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+
+      // Obtener ID del artículo desde la URL
+      const urlParts = productUrl.split("/");
+      const articleId = urlParts[urlParts.length - 1]; // Extrae el ID de la URL
 
       const productDetails = await page.evaluate(() => {
           const getDetailValue = (labelText) => {
@@ -46,15 +49,21 @@ async function scrapeProductDetails(productUrl) {
           const modelo = getDetailValue("Modelo");
           const color = getDetailValue("Color");
           const capacidad = getDetailValue("Capacidad de almacenamiento");
+          const editado = document.querySelector(".item-detail-stats_ItemDetailStats__description__vjz96")?.innerText || "";
+          const vistas = document.querySelector(".item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label='Views']")?.innerText || "0";
+          const meGustas = document.querySelector(".item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label='Favorites']")?.innerText || "0";
 
           const descripcion = document.querySelector(".item-detail_ItemDetail__description__7rXXT")?.textContent.trim() || "";
 
-          return { estado, marca, modelo, color, capacidad, descripcion };
+          return { estado, marca, modelo, color, capacidad, descripcion, editado, vistas, meGustas };
       });
 
-      console.log("Datos del producto extraídos:", productDetails);
+      // Agregar el ID único al producto
+      const product = { id: articleId, ...productDetails };
+
+      console.log("Datos del producto extraídos:", product);
       await browser.close();
-      return productDetails;
+      return product;
 
   } catch (error) {
       console.error(`Error scrapeando los detalles del producto en ${productUrl}:`, error);
@@ -64,7 +73,12 @@ async function scrapeProductDetails(productUrl) {
 }
 
 
-async function scrapeWallapop(modelUrl) {
+
+
+
+
+
+async function scrapeWallapopListings(modelUrl) {
   const productUrls = await scrapeListing(modelUrl);
 
   const products = [];
@@ -76,9 +90,30 @@ async function scrapeWallapop(modelUrl) {
       console.error(`Error scraping product at ${url}:`, error);
     }
   }
-  console.log("URL generada para el scraping:", productUrl);
 
+  console.log("Scraping completado para URLs:", modelUrl);
   return products;
 }
 
-module.exports = { scrapeWallapop, scrapeProductDetails };
+async function processScrapedData(products) {
+  for (const product of products) {
+    // Ajusta los datos a tu esquema
+    const productData = {
+      id: product.id || 0, // Extraído de la URL o el scraping
+      name: product.name || "Desconocido",
+      description: product.description || "Sin descripción",
+      lastEdited: product.lastEdited || null,
+      views: product.views || 0,
+      favorites: product.favorites || 0,
+    };
+
+  
+
+    // Guardar en Firestore
+    await saveScrapedProduct(productData);
+  }
+}
+
+
+
+export { scrapeWallapopListings, scrapeProductDetails, processScrapedData };

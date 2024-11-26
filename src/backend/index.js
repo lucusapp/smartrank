@@ -1,5 +1,13 @@
-const express = require("express");
-const { scrapeWallapop } = require("./scraper");
+
+import dotenv from "dotenv";
+dotenv.config();
+
+console.log("Variables de entorno:", process.env);
+
+
+import express from "express"
+import  scrapeWallapopMain  from "./scraper.js";
+import  db  from "../backend/config/firebase.js";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,7 +24,7 @@ app.get("/scrape", async (req, res) => {
   }
 
   try {
-    const results = await scrapeWallapop(model);
+    const results = await scrapeWallapopMain(model);
     res.json(results);
   } catch (error) {
     console.error("Error in scraping:", error);
