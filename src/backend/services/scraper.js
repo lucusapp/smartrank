@@ -38,24 +38,55 @@ async function scrapeProductDetails(productUrl) {
       const articleId = urlParts[urlParts.length - 1]; // Extrae el ID de la URL
 
       const productDetails = await page.evaluate(() => {
-          const getDetailValue = (labelText) => {
-              const label = Array.from(document.querySelectorAll(".item-detail-characteristics-details_CharacteristicsDetails__attribute__Gzko0"))
-                  .find((el) => el.textContent.trim() === labelText);
-              return label?.nextElementSibling?.textContent.trim() || "";
-          };
-
-          const estado = getDetailValue("Estado");
-          const marca = getDetailValue("Marca");
-          const modelo = getDetailValue("Modelo");
-          const color = getDetailValue("Color");
-          const capacidad = getDetailValue("Capacidad de almacenamiento");
-          const editado = document.querySelector(".item-detail-stats_ItemDetailStats__description__vjz96")?.innerText || "";
-          const vistas = document.querySelector(".item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label='Views']")?.innerText || "0";
-          const meGustas = document.querySelector(".item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label='Favorites']")?.innerText || "0";
-
-          const descripcion = document.querySelector(".item-detail_ItemDetail__description__7rXXT")?.textContent.trim() || "";
-
-          return { estado, marca, modelo, color, capacidad, descripcion, editado, vistas, meGustas };
+        // Selección del nodo HTML de características
+        const caracteristicasLinea = document.querySelector(
+          '.item-detail-additional-specifications_ItemDetailAdditionalSpecifications__characteristics__Ut9iT'
+        )?.textContent.trim() || "";
+      
+        // Inicialización de propiedades
+        let estado = "";
+        let marca = "";
+        let modelo = "";
+        let capacidad = "";
+        let color = "";
+      
+        if (caracteristicasLinea) {
+          // Dividir por separadores ' · '
+          const partes = caracteristicasLinea.split(' · ');
+      
+          // Extraer y asignar valores según las reglas
+          estado = partes.shift(); // Primer elemento: Estado
+          color = partes.pop(); // Último elemento: Color
+          if (partes[partes.length - 1]?.includes("GB")) {
+            capacidad = partes.pop(); // Si penúltimo incluye "GB": Capacidad
+          }
+          if (partes.length === 2) {
+            [marca, modelo] = partes; // Si quedan 2 elementos: Marca y Modelo
+          } else if (partes.length === 1) {
+            modelo = partes[0]; // Si queda 1 elemento: Modelo
+          }
+        }
+      
+        // Extracción del precio
+        const precio = document.querySelector(
+          '.item-detail-price_ItemDetailPrice--standard__TxPXr'
+        )?.textContent.trim() || "";
+      
+        // Extracción del estado de reserva
+        const reservado = !!document.querySelector(
+          'wallapop-badge[badge-type="reserved"]'
+        );
+      
+        // Devolver el objeto limpio
+        return {
+          estado,
+          marca,
+          modelo,
+          capacidad,
+          color,
+          precio,
+          reservado,
+        };
       });
 
       // Agregar el ID único al producto
