@@ -1,5 +1,12 @@
-const articlesData = {}; // Base de datos en memoria
+const articlesData = {}; //base de datos en memoria
 
+/**
+ * Actualiza o registra un artículo y su historial de cambios.
+ *
+ * @param {string} id - Identificador único del artículo.
+ * @param {Object} newData - Datos actuales del artículo scrapeado.
+ * @returns {Object} Resultado de la operación, incluyendo estado y cambios detectados.
+ */
 const updateArticle = (id, newData) => {
     const today = new Date().toISOString().split("T")[0]; // Fecha actual en formato YYYY-MM-DD
 
@@ -38,10 +45,16 @@ const updateArticle = (id, newData) => {
         }
     });
 
+    if (Object.keys(changes).length === 0) {
+        console.log(`No se detectaron cambios para el artículo: ${id}`);
+        return { status: "unchanged", id };
+    }
+
     // Añadir nuevo estado al historial
     history.push({
         date: today,
         data: newData,
+        changes, // Adjuntar los cambios detectados
     });
 
     console.log(`Artículo actualizado: ${id}`);
@@ -53,7 +66,12 @@ const updateArticle = (id, newData) => {
     };
 };
 
+/**
+ * Obtiene todos los datos de los artículos.
+ *
+ * @returns {Object} Todos los artículos con su historial.
+ */
 const getArticleData = () => articlesData;
 
-export  { updateArticle, getArticleData };
+export { updateArticle, getArticleData };
 

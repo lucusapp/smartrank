@@ -149,7 +149,14 @@ async function processScrapedData(products,model) {
       id: product.id || 0,  // Extraído de la URL o el scraping
       titulo: product.titulo || "Desconocido",
       description: product.description || "Sin descripción",
-      lastEdited: product.lastEdited || null,
+      precio: product.precio,
+      color: product.color,
+      capacidad: product.capacidad,
+      modelo: product.modelo,
+      marca: product.marca,
+      estado: product.estado,
+      reservado: product.reservado,
+      ultimaEdicion: product.ultimaEdicion || null,
       views: product.visitas || 0,   // Ahora usamos 'vistas' para obtener las vistas
       favorites: product.favoritos || 0,  // Ahora usamos 'favoritos' para obtener los favoritos
       updatedAt: product.lastScraped || null,
@@ -157,6 +164,13 @@ async function processScrapedData(products,model) {
 
     // Usamos `updateArticle` para registrar o actualizar el artículo
     const updateResult = updateArticle(productData.id, productData);
+
+    // Determinar los cambios detectados
+        let changes = {};
+            if (updateResult.status === "updated") {
+                changes = updateResult.changes;
+                console.log(`Cambios detectados para ${productData.id}:`, changes);
+            }
 
     // Manejo del resultado de la actualización
     if (updateResult.status === "new") {
@@ -169,7 +183,7 @@ async function processScrapedData(products,model) {
     }
 
     // Ahora que se ha registrado el cambio, lo guardamos en Firestore
-    await saveScrapedProduct(productData,model);
+    await saveScrapedProduct(productData,model,changes);
   }
 }
 
