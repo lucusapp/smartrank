@@ -6,7 +6,8 @@ console.log("Variables de entorno:", process.env);
 
 
 import express from "express"
-import  scrapeWallapopMain  from "./scraper.js";
+import { scrapeWallapopListings, processScrapedData } from "./services/scraper.js";
+
 import  db  from "../backend/config/firebase.js";
 
 const app = express();
@@ -17,18 +18,19 @@ app.get("/", (req, res) => {
 });
 
 app.get("/scrape", async (req, res) => {
-  const { model } = req.query;
-
+  const model = req.query.model;
   if (!model) {
-    return res.status(400).json({ error: "Model parameter is required." });
+    return res.status(400).send("Por favor, especifica un modelo en la URL.");
   }
 
   try {
-    const results = await scrapeWallapopMain(model);
-    res.json(results);
+    console.log(`Iniciando scraping para el modelo: ${model}`);
+    const products = await scrapeWallapopListings(`https://wallapop.com/${model}`);
+    await processScrapedData(products, model); // Pasa el modelo
+    res.status(200).send(`Scraping completado para el modelo: ${model}`);
   } catch (error) {
-    console.error("Error in scraping:", error);
-    res.status(500).json({ error: "Error scraping Wallapop" });
+    console.error("Error durante el scraping:", error);
+    res.status(500).send("Ocurrió un error durante el scraping.");
   }
 });
 

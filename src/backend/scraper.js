@@ -43,46 +43,70 @@
 // }
 
 
-
 import puppeteer from "puppeteer";
 import { scrapeProductDetails, processScrapedData } from "./services/scraper.js";
 
 async function scrapeWallapopMain(model) {
+  if (!model || typeof model !== "string") {
+    throw new Error("Modelo inválido. Por favor, proporciona un modelo válido para el scraping.");
+  }
+
   const browser = await puppeteer.launch();
   const page = await browser.newPage();
 
   try {
     const searchUrl = `https://es.wallapop.com/app/search?filters_source=search_box&keywords=${encodeURIComponent(model)}`;
+    console.log(`Iniciando scraping para el modelo: ${model}`);
+    console.log(`Navegando a la URL: ${searchUrl}`);
     await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
     await page.waitForSelector(".ItemCardList__item");
 
+    // Extraer URLs de productos
     const productLinks = await page.evaluate(() =>
       Array.from(document.querySelectorAll("a.ItemCardList__item")).map((item) => item.href)
     );
     console.log("Productos encontrados:", productLinks);
 
+    // Extraer detalles de cada producto
     const detailedProducts = [];
     for (const link of productLinks) {
       try {
         const details = await scrapeProductDetails(link);
         detailedProducts.push({ url: link, ...details });
       } catch (error) {
-        console.error(`Error scraping product details for ${link}:`, error);
+        console.error(`Error extrayendo detalles para ${link}:`, error);
       }
     }
 
-    // Procesa todos los productos al final
-    await processScrapedData(detailedProducts);
+    // Procesar y guardar los productos
+    await processScrapedData(detailedProducts, model); // Pasar el modelo para usarlo como nombre de colección
 
+    console.log("Scraping completado con éxito.");
     return detailedProducts;
   } catch (error) {
-    console.error("Error scraping Wallapop listings:", error);
+    console.error("Error general en el scraping de Wallapop:", error);
     return [];
   } finally {
     await browser.close();
   }
 }
 
-export default scrapeWallapopMain;
+// Wrapper principal para manejar la ejecución
+(async () => {
+  const args = process.argv.slice(2);
+  const model = args[0]; // Recoge el modelo desde los argumentos
+  if (!model) {
+    console.error("Por favor, proporciona un modelo para el scraping. Ejemplo: node scraper.js 'oppo a53s'");
+    process.exit(1);
+  }
+
+  try {
+    await scrapeWallapopMain(model);
+  } catch (error) {
+    console.error("Error ejecutando el scraper:", error);
+    process.exit(1);
+  }
+})();
+
 
 

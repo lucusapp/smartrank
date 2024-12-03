@@ -2,11 +2,11 @@ import admin from "firebase-admin";
 import db from "../config/firebase.js";
 
 // Guardar datos en Firestore con Admin SDK
-export async function saveScrapedProduct(product) {
-  console.log(product)
+export async function saveScrapedProduct(product, model) {
+  console.log(`Guardando producto en la colección ${model}:`, product);
 
-  const productRef = db.collection("scrapedProducts").doc(product.id); // Admin SDK usa .collection().doc()
-
+  // Usar el modelo como nombre de la colección
+  const productRef = db.collection(model).doc(product.id); 
 
   try {
     const existingProduct = await productRef.get();
@@ -17,7 +17,7 @@ export async function saveScrapedProduct(product) {
         ...product,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-      console.log(`Producto ${product.id} actualizado en Firestore.`);
+      console.log(`Producto ${product.id} actualizado en la colección ${model}.`);
     } else {
       // Si no existe, crea un nuevo documento
       await productRef.set({
@@ -25,11 +25,11 @@ export async function saveScrapedProduct(product) {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
-      console.log(`Producto ${product.id} guardado en Firestore.`);
+      console.log(`Producto ${product.id} guardado en la colección ${model}.`);
     }
   } catch (error) {
-    console.error("Error al guardar el producto en Firestore:", error);
+    console.error(`Error al guardar el producto en la colección ${model}:`, error);
   }
 }
 
-export default { saveScrapedProduct };  
+export default { saveScrapedProduct };
