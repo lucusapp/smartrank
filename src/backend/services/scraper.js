@@ -26,6 +26,8 @@ async function scrapeProductDetails(productUrl) {
   try {
     console.log(`Navegando a la URL: ${productUrl}`);
     await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+// Asegurarte de que las imágenes están cargadas
+    await page.waitForSelector(".ItemDetailCarousel__initialBackground img[slot='carousel-content']", { timeout: 5000 });
 
     // Obtener ID del artículo desde la URL
     const urlParts = productUrl.split("/");
@@ -46,7 +48,7 @@ async function scrapeProductDetails(productUrl) {
 
       if (caracteristicasLinea) {
         // Dividir por separadores ' · '
-        const partes = caracteristicasLinea.split(' · ');
+        const partes = caracteristicasLinea.split(" · ");
 
         // Extraer y asignar valores según las reglas
         estado = partes.shift(); // Primer elemento: Estado
@@ -88,7 +90,18 @@ async function scrapeProductDetails(productUrl) {
         '.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Favorites"]'
       )?.textContent.trim() || "0";
 
-      const ultimaEdicion = document.querySelector('.item-detail-stats_ItemDetailStats__description__vjz96')?.textContent.trim() || "Desconocido";
+      const ultimaEdicion = document.querySelector(
+        ".item-detail-stats_ItemDetailStats__description__vjz96"
+      )?.textContent.trim() || "Desconocido";
+
+      // Lógica de extracción de imágenes
+      let imagenes = [];
+      try {
+        const imageNodes = document.querySelectorAll(".ItemDetailCarousel__initialBackground img[slot='carousel-content']");
+        imagenes = Array.from(imageNodes).map((img) => img.src || "").filter((src) => src !== "");
+      } catch (imgError) {
+        console.error("Error al extraer imágenes:", imgError);
+      }
 
       // Devolver el objeto limpio
       return {
@@ -103,7 +116,8 @@ async function scrapeProductDetails(productUrl) {
         reservado,
         visitas,
         favoritos,
-        ultimaEdicion
+        ultimaEdicion,
+        imagenes,
       };
     });
 
@@ -142,8 +156,14 @@ async function scrapeWallapopListings(modelUrl) {
 }
 
 // Función para procesar y guardar los datos scrapeados
-async function processScrapedData(products,model) {
+async function processScrapedData(products, model) {
   for (const product of products) {
+       // Verificar que el array de imágenes no sea undefined y que se inicialice correctamente
+       const imagenes = product.imagenes && Array.isArray(product.imagenes) ? product.imagenes : [];
+
+       // Verificar que 'imagenes' tiene los datos correctos (opcional, solo para depuración)
+       console.log(`Imágenes extraídas para el producto ${product.id}:`, imagenes);
+
     // Ajusta los datos a tu esquema
     const productData = {
       id: product.id || 0,  // Extraído de la URL o el scraping
@@ -160,17 +180,19 @@ async function processScrapedData(products,model) {
       views: product.visitas || 0,   // Ahora usamos 'vistas' para obtener las vistas
       favorites: product.favoritos || 0,  // Ahora usamos 'favoritos' para obtener los favoritos
       updatedAt: product.lastScraped || null,
+      imagenes, // Guardar el array de URLs de imágenes
     };
 
     // Usamos `updateArticle` para registrar o actualizar el artículo
     const updateResult = updateArticle(productData.id, productData);
+    console.log(productData)
 
     // Determinar los cambios detectados
-        let changes = {};
-            if (updateResult.status === "updated") {
-                changes = updateResult.changes;
-                console.log(`Cambios detectados para ${productData.id}:`, changes);
-            }
+    let changes = {};
+    if (updateResult.status === "updated") {
+      changes = updateResult.changes;
+      console.log(`Cambios detectados para ${productData.id}:`, changes);
+    }
 
     // Manejo del resultado de la actualización
     if (updateResult.status === "new") {
@@ -182,8 +204,13 @@ async function processScrapedData(products,model) {
       console.log(`El artículo no ha cambiado hoy: ${productData.id}`);
     }
 
-    // Ahora que se ha registrado el cambio, lo guardamos en Firestore
-    await saveScrapedProduct(productData,model,changes);
+    // Guardar en Firestore
+    try {
+      await saveScrapedProduct(productData, model, changes);
+      console.log(`Producto guardado en Firestore: ${productData.id}`);
+    } catch (error) {
+      console.error(`Error al guardar producto en Firestore: ${productData.id}`, error);
+    }
   }
 }
 

@@ -1,12 +1,5 @@
-const articlesData = {}; //base de datos en memoria
+const articlesData = {}; // Estructura principal para almacenar los artículos
 
-/**
- * Actualiza o registra un artículo y su historial de cambios.
- *
- * @param {string} id - Identificador único del artículo.
- * @param {Object} newData - Datos actuales del artículo scrapeado.
- * @returns {Object} Resultado de la operación, incluyendo estado y cambios detectados.
- */
 const updateArticle = (id, newData) => {
     const today = new Date().toISOString().split("T")[0]; // Fecha actual en formato YYYY-MM-DD
 
@@ -14,10 +7,12 @@ const updateArticle = (id, newData) => {
         // Si el artículo es nuevo, inicializar con la fecha actual y datos iniciales
         articlesData[id] = {
             firstDetected: new Date(),
+            lastUpdate: today,
             history: [
                 {
                     date: today,
                     data: newData,
+                    changes: null, // No hay cambios porque es nuevo
                 },
             ],
         };
@@ -26,9 +21,10 @@ const updateArticle = (id, newData) => {
     }
 
     // Obtener historial y último estado
-    const history = articlesData[id].history;
-    const lastRecord = history[history.length - 1];
+    const article = articlesData[id];
+    const lastRecord = article.history[article.history.length - 1];
 
+    // Si ya fue actualizado hoy, no hacer nada
     if (lastRecord.date === today) {
         console.log(`Artículo ya actualizado hoy: ${id}`);
         return { status: "unchanged", id };
@@ -45,17 +41,22 @@ const updateArticle = (id, newData) => {
         }
     });
 
+    // Si no hay cambios, no añadimos un nuevo registro al historial
     if (Object.keys(changes).length === 0) {
-        console.log(`No se detectaron cambios para el artículo: ${id}`);
+        console.log(`No hay cambios detectados para el artículo: ${id}`);
         return { status: "unchanged", id };
     }
 
-    // Añadir nuevo estado al historial
-    history.push({
+    // Actualizar el historial con las modificaciones
+    const updatedRecord = {
         date: today,
         data: newData,
-        changes, // Adjuntar los cambios detectados
-    });
+        changes, // Guardamos solo los cambios detectados
+    };
+    article.history.push(updatedRecord);
+
+    // Actualizar la fecha de última actualización
+    article.lastUpdate = today;
 
     console.log(`Artículo actualizado: ${id}`);
     return {
@@ -66,11 +67,7 @@ const updateArticle = (id, newData) => {
     };
 };
 
-/**
- * Obtiene todos los datos de los artículos.
- *
- * @returns {Object} Todos los artículos con su historial.
- */
+// Devuelve todos los datos de los artículos
 const getArticleData = () => articlesData;
 
 export { updateArticle, getArticleData };
