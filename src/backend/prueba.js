@@ -1,30 +1,70 @@
-import { scrapeProductDetails } from "./services/scraper.js"; // Ajusta el path si es necesario
-import { saveScrapedProduct } from "./services/firestoreService.js"; // Ajusta el path si es necesario
+import admin from "firebase-admin";
+import db from "../backend/config/firebase.js";
 
-// URL fija que queremos scrapeear
-const PRODUCT_URL = "https://es.wallapop.com/item/oppo-a53s-1054354140"; // Cambia a una URL que quieras probar
+export async function saveScrapedProduct(product, model, changes = {}) {
+    console.log(`Guardando producto en la colección ${model}:`, product);
 
-async function scrapeAndSave() {
-  try {
-    console.log(`Iniciando scrapeo del producto en la URL: ${PRODUCT_URL}`);
+    const productRef = db.collection(model).doc(product.id);
 
-    // Scrapeamos los detalles del producto
-    const productDetails = await scrapeProductDetails(PRODUCT_URL);
-    if (!productDetails) {
-      console.error("No se pudieron obtener los detalles del producto.");
-      return;
+    try {
+        const existingProduct = await productRef.get();
+
+        if (existingProduct.exists) {
+            // Si existe, agregar los cambios al historial si hay modificaciones
+            if (Object.keys(changes).length > 0) {
+                // Crear el historial con un timestamp real
+                const historyEntry = {
+                    date: new Date().toISOString(), // Genera el timestamp aquí
+                    changes,
+                };
+
+                await productRef.update({
+                    ...product,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+                });
+                console.log(`Producto ${product.id} actualizado con historial en la colección ${model}.`);
+            } else {
+                // Actualización sin cambios detectados
+                await productRef.update({
+                    ...product,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+                console.log(`Producto ${product.id} actualizado sin cambios detectados en la colección ${model}.`);
+            }
+        } else {
+            // Si no existe, crear un nuevo documento
+            await productRef.set({
+                ...product,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                history: [], // Inicializar historial vacío
+            });
+            console.log(`Producto ${product.id} guardado en la colección ${model}.`);
+        }
+    } catch (error) {
+        console.error(`Error al guardar el producto en la colección ${model}:`, error);
     }
+}
+async function testHistory() {
+    const product = {
+        id: "test-product",
+        titulo: "Producto Test",
+        precio: "100 €",
+        estado: "Nuevo",
+    };
 
-    console.log("Detalles del producto extraídos:", productDetails);
+    const changes = { precio: "150 €" }; // Simulamos un cambio en el precio
 
-    // Guardamos en Firebase
-    console.log("Intentando guardar los detalles en Firebase...");
-    await saveScrapedProduct(productDetails);
-    console.log("Producto guardado exitosamente en Firebase.");
-  } catch (error) {
-    console.error("Error durante el proceso de scraping y guardado:", error);
-  }
+    await saveScrapedProduct(product, "products", changes);
+
+    const db = (await import("./config/firebase.js")).default;
+    const doc = await db.collection("products").doc(product.id).get();
+
+    console.log("Producto actualizado:", doc.data());
 }
 
-// Ejecutar la prueba
-scrapeAndSave();
+testHistory();
+
+
+export default { saveScrapedProduct };
