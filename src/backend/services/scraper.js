@@ -2,6 +2,7 @@ import puppeteer from "puppeteer";
 import fs from "fs/promises";
 import { updateArticle, getArticleData } from "./articleTracker.js";
 import { saveScrapedProduct } from "./firestoreService.js";
+import { scrapeReviewsData } from "./reviewsData.js"; // Importamos el módulo para valoraciones
 
 // Función para leer URLs desde un archivo
 async function readProductList(filePath) {
@@ -81,6 +82,8 @@ async function scrapeProductDetails(productUrl) {
                 console.error("Error al extraer imágenes:", imgError);
             }
 
+            const profileHref = document.querySelector('.item-detail_ItemDetail__footer__K_ePu a')?.getAttribute('href') || null;
+
             return {
                 estado,
                 marca,
@@ -95,6 +98,7 @@ async function scrapeProductDetails(productUrl) {
                 favoritos,
                 ultimaEdicion,
                 imagenes,
+                profileHref, // Referencia al perfil para obtener valoraciones
             };
         });
 
@@ -133,6 +137,7 @@ async function processScrapedData(products, model) {
             favorites: product.favoritos || 0,
             updatedAt: product.lastScraped || null,
             imagenes,
+            reviews: product.reviews || [], // Incluimos las valoraciones
         };
 
         const updateResult = updateArticle(productData.id, productData);
@@ -160,6 +165,11 @@ async function scrapeProductsFromList(filePath, model) {
         for (const url of urls) {
             try {
                 const productDetails = await scrapeProductDetails(url);
+                if (productDetails && productDetails.profileHref) {
+                    // Obtener valoraciones del perfil asociado
+                    const reviews = await scrapeReviewsData(productDetails.profileHref);
+                    productDetails.reviews = reviews; // Agregar las valoraciones al producto
+                }
                 if (productDetails) {
                     console.log(`Guardando producto: ${productDetails.id}`);
                     await processScrapedData([productDetails], model);
@@ -176,4 +186,5 @@ async function scrapeProductsFromList(filePath, model) {
 }
 
 // Exportar funciones necesarias
-export { scrapeProductsFromList,processScrapedData,scrapeProductDetails };
+export { scrapeProductsFromList, processScrapedData, scrapeProductDetails };
+
