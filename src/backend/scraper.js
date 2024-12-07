@@ -45,8 +45,21 @@
 
 import puppeteer from "puppeteer";
 import { scrapeProductDetails, processScrapedData } from "./services/scraper.js";
+import fs from "fs/promises";
 
-async function scrapeWallapopMain(model) {
+async function readProductList(filePath) {
+  try {
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    const productNames = fileContent.split("\n").map((line) => line.trim()).filter((line) => line);
+    console.log(`Leídas ${productNames.length} líneas desde ${filePath}`);
+    return productNames;
+  } catch (error) {
+    console.error(`Error al leer el archivo ${filePath}:`, error);
+    throw error;
+  }
+}
+
+async function scrapeWallapopForProduct(model) {
   if (!model || typeof model !== "string") {
     throw new Error("Modelo inválido. Por favor, proporciona un modelo válido para el scraping.");
   }
@@ -81,29 +94,37 @@ async function scrapeWallapopMain(model) {
     // Procesar y guardar los productos
     await processScrapedData(detailedProducts, model); // Pasar el modelo para usarlo como nombre de colección
 
-    console.log("Scraping completado con éxito.");
+    console.log(`Scraping completado con éxito para el modelo: ${model}.`);
     return detailedProducts;
   } catch (error) {
-    console.error("Error general en el scraping de Wallapop:", error);
+    console.error(`Error general en el scraping del modelo "${model}":`, error);
     return [];
   } finally {
     await browser.close();
   }
 }
 
-// Wrapper principal para manejar la ejecución
 (async () => {
-  const args = process.argv.slice(2);
-  const model = args[0]; // Recoge el modelo desde los argumentos
-  if (!model) {
-    console.error("Por favor, proporciona un modelo para el scraping. Ejemplo: node scraper.js 'oppo a53s'");
-    process.exit(1);
-  }
-
+  const filePath = "./product-list.txt"; // Ruta al archivo con los nombres de productos
   try {
-    await scrapeWallapopMain(model);
+    const productNames = await readProductList(filePath);
+    if (productNames.length === 0) {
+      console.error("No se encontraron productos en la lista.");
+      process.exit(1);
+    }
+
+    for (const model of productNames) {
+      console.log(`Procesando modelo: ${model}`);
+      try {
+        await scrapeWallapopForProduct(model);
+      } catch (error) {
+        console.error(`Error procesando el modelo "${model}":`, error);
+      }
+    }
+
+    console.log("Scraping completado para todos los productos en la lista.");
   } catch (error) {
-    console.error("Error ejecutando el scraper:", error);
+    console.error("Error general al ejecutar el scraper:", error);
     process.exit(1);
   }
 })();
