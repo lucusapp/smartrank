@@ -2,11 +2,27 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-console.log("Variables de entorno:", process.env);
-
+//console.log("Variables de entorno:", process.env);
 
 import express from "express"
-import { scrapeWallapopListings, processScrapedData } from "./services/scraper.js";
+import { scrapeProductsFromList } from "../backend/services/scraper.js";
+
+// Ruta al archivo que contiene las URLs de productos
+const filePath = "./product-list.txt";
+
+// Modelo que se utilizará para categorizar o guardar en Firestore
+const model = "products";
+
+// Ejecutar el proceso de scraping
+(async () => {
+    try {
+        console.log("Iniciando el scraping de productos...");
+        await scrapeProductsFromList(filePath, model);
+        console.log("Proceso de scraping finalizado.");
+    } catch (error) {
+        console.error("Error durante el scraping:", error);
+    }
+})();
 
 import  db  from "../backend/config/firebase.js";
 
