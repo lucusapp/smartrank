@@ -1,14 +1,25 @@
 import puppeteer from "puppeteer";
 import fs from "fs/promises";
 import { updateArticle, getArticleData } from "./articleTracker.js";
+import { validModels } from "../../backend/validModels.js";
 import { saveScrapedProduct } from "./firestoreService.js";
 import { scrapeReviewsData } from "./reviewsData.js"; // Importamos el módulo para valoraciones
+
+
+function isMobileTitle(title) {
+    // Convertimos a minúsculas para comparación insensible a mayúsculas/minúsculas
+    const lowerTitle = title.toLowerCase();
+
+    // Validamos si el título comienza con un modelo válido o incluye "móvil/movil"
+    return validModels.some(model => lowerTitle.startsWith(model.toLowerCase()) || lowerTitle.includes(model.toLowerCase()));
+}
+
 
 // Función para leer URLs desde un archivo
 async function readProductList(filePath) {
     try {
         const fileContent = await fs.readFile(filePath, "utf-8");
-        const urls = fileContent.split("\n").map(line => line.trim()).filter(line => line);
+        const urls = fileContent.split("\n").map(line => line.trim()).filter(Boolean);
         console.log(`Leídas ${urls.length} URLs desde ${filePath}`);
         return urls;
     } catch (error) {
@@ -18,6 +29,13 @@ async function readProductList(filePath) {
 }
 
 // Función para extraer detalles de un producto
+import { validModels } from "./validModels.js";
+
+function isValidTitle(title) {
+    const lowerTitle = title.toLowerCase();
+    return validModels.some(model => lowerTitle.startsWith(model.toLowerCase()) || lowerTitle.includes(model.toLowerCase()));
+}
+
 async function scrapeProductDetails(productUrl) {
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
@@ -54,22 +72,27 @@ async function scrapeProductDetails(productUrl) {
                 }
             }
 
-            const precio = document.querySelector(
-                '.item-detail-price_ItemDetailPrice--standard__TxPXr'
-            )?.textContent.trim() || "";
             const titulo = document.querySelector(
                 '.item-detail_ItemDetail__title__wcPRl'
             )?.textContent.trim() || "";
+
+            const precio = document.querySelector(
+                '.item-detail-price_ItemDetailPrice--standard__TxPXr'
+            )?.textContent.trim() || "";
+
             const description = document.querySelector(
                 '.item-detail_ItemDetail__description__7rXXT'
             )?.textContent.trim() || "";
+
             const reservado = !!document.querySelector('wallapop-badge[badge-type="reserved"]');
             const visitas = document.querySelector(
                 '.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Views"]'
             )?.textContent.trim() || "0";
+
             const favoritos = document.querySelector(
                 '.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Favorites"]'
             )?.textContent.trim() || "0";
+
             const ultimaEdicion = document.querySelector(
                 ".item-detail-stats_ItemDetailStats__description__vjz96"
             )?.textContent.trim() || "Desconocido";
@@ -101,6 +124,13 @@ async function scrapeProductDetails(productUrl) {
                 profileHref, // Referencia al perfil para obtener valoraciones
             };
         });
+
+        // Validamos si el título es relevante
+        if (!isValidTitle(productDetails.titulo)) {
+            console.log(`Producto ignorado por título irrelevante: ${productDetails.titulo}`);
+            await browser.close();
+            return null; // Ignoramos este producto
+        }
 
         productDetails.lastScraped = new Date().toISOString();
         const product = { id: articleId, ...productDetails };
