@@ -105,7 +105,12 @@ async function scrapeProductDetails(productUrl) {
                 console.error("Error al extraer imágenes:", imgError);
             }
 
-            const profileHref = document.querySelector('.item-detail_ItemDetail__footer__K_ePu a')?.getAttribute('href') || null;
+            const profileHrefElement = document.querySelector(
+                '.item-detail-header_ItemDetailHeader__fillRemainingWidth__8TxnC a'
+            );
+            const profileHref = profileHrefElement
+                ? profileHrefElement.href // Capturamos el href absoluto
+                : null;
 
             return {
                 estado,
@@ -149,8 +154,6 @@ async function scrapeProductDetails(productUrl) {
 // Función para procesar y guardar datos
 async function processScrapedData(products, model) {
     for (const product of products) {
-        const imagenes = product.imagenes && Array.isArray(product.imagenes) ? product.imagenes : [];
-
         const productData = {
             id: product.id || 0,
             titulo: product.titulo || "Desconocido",
@@ -166,20 +169,17 @@ async function processScrapedData(products, model) {
             views: product.visitas || 0,
             favorites: product.favoritos || 0,
             updatedAt: product.lastScraped || null,
-            imagenes,
-            reviews: product.reviews || [], // Incluimos las valoraciones
+            imagenes: product.imagenes || [],
+            urlPerfil: product.profileHref,
+            reviews: product.reviews || [],
         };
 
         const updateResult = updateArticle(productData.id, productData);
 
-        let changes = {};
-        if (updateResult.status === "updated") {
-            changes = updateResult.changes;
-            console.log(`Cambios detectados para ${productData.id}:`, changes);
-        }
+        console.log(`Resultado de updateArticle para ${productData.id}:`, updateResult);
 
         try {
-            await saveScrapedProduct(productData, model, changes);
+            await saveScrapedProduct(productData, model, updateResult.changes || {});
             console.log(`Producto guardado en Firestore: ${productData.id}`);
         } catch (error) {
             console.error(`Error al guardar producto en Firestore: ${productData.id}`, error);
