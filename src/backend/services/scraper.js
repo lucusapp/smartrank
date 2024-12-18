@@ -1,19 +1,15 @@
 import puppeteer from "puppeteer";
 import fs from "fs/promises";
-import { updateArticle, getArticleData } from "./articleTracker.js";
-import { validModels } from "../../backend/validModels.js";
+import { updateArticle } from "./articleTracker.js";
 import { saveScrapedProduct } from "./firestoreService.js";
 import { scrapeReviewsData } from "./reviewsData.js"; // Importamos el módulo para valoraciones
 
-
-function isMobileTitle(title) {
-    // Convertimos a minúsculas para comparación insensible a mayúsculas/minúsculas
+// Nueva función para validar títulos irrelevantes
+function isRelevantTitle(title) {
+    const irrelevantTerms = ["funda", "carcasa", "pantalla", "protector", "cargador"];
     const lowerTitle = title.toLowerCase();
-
-    // Validamos si el título comienza con un modelo válido o incluye "móvil/movil"
-    return validModels.some(model => lowerTitle.startsWith(model.toLowerCase()) || lowerTitle.includes(model.toLowerCase()));
+    return !irrelevantTerms.some(term => lowerTitle.includes(term));
 }
-
 
 // Función para leer URLs desde un archivo
 async function readProductList(filePath) {
@@ -29,13 +25,6 @@ async function readProductList(filePath) {
 }
 
 // Función para extraer detalles de un producto
-import { validModels } from "./validModels.js";
-
-function isValidTitle(title) {
-    const lowerTitle = title.toLowerCase();
-    return validModels.some(model => lowerTitle.startsWith(model.toLowerCase()) || lowerTitle.includes(model.toLowerCase()));
-}
-
 async function scrapeProductDetails(productUrl) {
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
@@ -48,30 +37,6 @@ async function scrapeProductDetails(productUrl) {
         const articleId = urlParts[urlParts.length - 1]; // ID del producto desde la URL
 
         const productDetails = await page.evaluate(() => {
-            const caracteristicasLinea = document.querySelector(
-                '.item-detail-additional-specifications_ItemDetailAdditionalSpecifications__characteristics__Ut9iT'
-            )?.textContent.trim() || "";
-
-            let estado = "";
-            let marca = "";
-            let modelo = "";
-            let capacidad = "";
-            let color = "";
-
-            if (caracteristicasLinea) {
-                const partes = caracteristicasLinea.split(" · ");
-                estado = partes.shift();
-                color = partes.pop();
-                if (partes[partes.length - 1]?.includes("GB")) {
-                    capacidad = partes.pop();
-                }
-                if (partes.length === 2) {
-                    [marca, modelo] = partes;
-                } else if (partes.length === 1) {
-                    modelo = partes[0];
-                }
-            }
-
             const titulo = document.querySelector(
                 '.item-detail_ItemDetail__title__wcPRl'
             )?.textContent.trim() || "";
@@ -113,13 +78,8 @@ async function scrapeProductDetails(productUrl) {
                 : null;
 
             return {
-                estado,
-                marca,
-                modelo,
-                capacidad,
-                color,
-                precio,
                 titulo,
+                precio,
                 description,
                 reservado,
                 visitas,
@@ -131,7 +91,7 @@ async function scrapeProductDetails(productUrl) {
         });
 
         // Validamos si el título es relevante
-        if (!isValidTitle(productDetails.titulo)) {
+        if (!isRelevantTitle(productDetails.titulo)) {
             console.log(`Producto ignorado por título irrelevante: ${productDetails.titulo}`);
             await browser.close();
             return null; // Ignoramos este producto
@@ -154,35 +114,15 @@ async function scrapeProductDetails(productUrl) {
 // Función para procesar y guardar datos
 async function processScrapedData(products, model) {
     for (const product of products) {
-        const productData = {
-            id: product.id || 0,
-            titulo: product.titulo || "Desconocido",
-            description: product.description || "Sin descripción",
-            precio: product.precio,
-            color: product.color,
-            capacidad: product.capacidad,
-            modelo: product.modelo,
-            marca: product.marca,
-            estado: product.estado,
-            reservado: product.reservado,
-            ultimaEdicion: product.ultimaEdicion || null,
-            views: product.visitas || 0,
-            favorites: product.favoritos || 0,
-            updatedAt: product.lastScraped || null,
-            imagenes: product.imagenes || [],
-            urlPerfil: product.profileHref,
-            reviews: product.reviews || [],
-        };
+        const updateResult = updateArticle(product.id, product);
 
-        const updateResult = updateArticle(productData.id, productData);
-
-        console.log(`Resultado de updateArticle para ${productData.id}:`, updateResult);
+        console.log(`Resultado de updateArticle para ${product.id}:`, updateResult);
 
         try {
-            await saveScrapedProduct(productData, model, updateResult.changes || {});
-            console.log(`Producto guardado en Firestore: ${productData.id}`);
+            await saveScrapedProduct(product, model, updateResult.changes || {});
+            console.log(`Producto guardado en Firestore: ${product.id}`);
         } catch (error) {
-            console.error(`Error al guardar producto en Firestore: ${productData.id}`, error);
+            console.error(`Error al guardar producto en Firestore: ${product.id}`, error);
         }
     }
 }
@@ -196,9 +136,8 @@ async function scrapeProductsFromList(filePath, model) {
             try {
                 const productDetails = await scrapeProductDetails(url);
                 if (productDetails && productDetails.profileHref) {
-                    // Obtener valoraciones del perfil asociado
                     const reviews = await scrapeReviewsData(productDetails.profileHref);
-                    productDetails.reviews = reviews; // Agregar las valoraciones al producto
+                    productDetails.reviews = reviews;
                 }
                 if (productDetails) {
                     console.log(`Guardando producto: ${productDetails.id}`);
@@ -215,6 +154,6 @@ async function scrapeProductsFromList(filePath, model) {
     }
 }
 
-// Exportar funciones necesarias
 export { scrapeProductsFromList, processScrapedData, scrapeProductDetails };
+
 
