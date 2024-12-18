@@ -9,7 +9,7 @@ const updateArticle = (id, newData) => {
             lastUpdate: today,
             history: [{ date: today, data: newData, changes: null }],
         };
-        return { status: "new", id, data: newData };
+        return { status: "new", id, data: newData, needsRescrape: true };
     }
 
     const article = articlesData[id];
@@ -29,7 +29,7 @@ const updateArticle = (id, newData) => {
 
     if (Object.keys(changes).length === 0) {
         console.log(`No hay cambios detectados para el artículo: ${id}`);
-        return { status: "unchanged", id };
+        return { status: "unchanged", id, needsRescrape: false };
     }
 
     const updatedRecord = { date: today, data: newData, changes };
@@ -37,11 +37,37 @@ const updateArticle = (id, newData) => {
     article.lastUpdate = today;
 
     console.log(`Artículo actualizado: ${id}, cambios detectados:`, changes);
-    return { status: "updated", id, changes, newData };
+    return { status: "updated", id, changes, newData, needsRescrape: true };
 };
+async function shouldScrapeAgain(product, model) {
+    try {
+        const firebaseData = await getArticleData(product.id, model);
+
+        if (!firebaseData) {
+            console.log(`Producto nuevo (no existe en Firebase): ${product.id}`);
+            return true; // Producto nuevo, debe scrapease
+        }
+
+        // Delegar comparación a updateArticle
+        const { needsRescrape } = updateArticle(product.id, firebaseData);
+
+        if (needsRescrape) {
+            console.log(`Cambios detectados en el producto ${product.id}: necesita ser scrapeado de nuevo.`);
+        } else {
+            console.log(`Producto ${product.id} no ha cambiado: se omite.`);
+        }
+
+        return needsRescrape; // True si hay cambios, False si no
+    } catch (error) {
+        console.error(`Error al validar el producto ${product.id}:`, error);
+        return true; // Por seguridad, scrapeamos si falla la validación
+    }
+}
+
+
 
 // Devuelve todos los datos de los artículos
 const getArticleData = () => articlesData;
 
-export { updateArticle, getArticleData };
+export { updateArticle, getArticleData,shouldScrapeAgain };
 
