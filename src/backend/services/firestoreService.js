@@ -2,6 +2,11 @@ import admin from "firebase-admin";
 import db from "../config/firebase.js";
 
 export async function saveScrapedProduct(product, model) {
+    if (!product || !product.id) {
+        console.error("Error: El producto no tiene un ID válido. No se puede guardar.");
+        return;
+    }
+
     console.log(`Iniciando guardado de producto: ${product.id}`);
 
     const productRef = db.collection(model).doc(product.id);
@@ -9,45 +14,50 @@ export async function saveScrapedProduct(product, model) {
 
     try {
         const existingProduct = await productRef.get();
-
         let detectedChanges = {};
+        let previousData = null; // Inicializar la variable para evitar errores de referencia
+
         if (existingProduct.exists) {
-            const previousData = existingProduct.data(); // Datos previos en Firebase
+            previousData = existingProduct.data(); // Datos previos en Firebase
 
             // Detectar los cambios comparando con los datos scrapeados
             Object.keys(product).forEach((key) => {
-                const previousValue = previousData[key]?.toString() || ""; // Convertir a string
-                const currentValue = product[key]?.toString() || ""; // Convertir a string
+                const previousValue = previousData[key] ?? "No disponible";
+                const currentValue = product[key] ?? "";
 
                 if (previousValue !== currentValue) {
                     detectedChanges[key] = {
-                        previous: previousData[key] || "No disponible",
-                        current: product[key],
+                        previous: previousValue,
+                        current: currentValue,
                     };
                 }
             });
 
             console.log(`Cambios detectados para ${product.id}:`, detectedChanges);
 
-            // Crear entrada de historial con cambios detectados
-            const historyEntry = {
-                date: today,
-                data: { ...product },
-                changes: Object.keys(detectedChanges).length > 0 ? detectedChanges : null,
-            };
+            if (Object.keys(detectedChanges).length > 0) {
+                // Crear entrada de historial con cambios detectados
+                const historyEntry = {
+                    date: today.toISOString(),
+                    data: { ...product },
+                    changes: detectedChanges,
+                };
 
-            // Actualizar producto con historial en Firebase
-            await productRef.update({
-                ...product,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                history: admin.firestore.FieldValue.arrayUnion(historyEntry),
-            });
+                // Actualizar producto con historial en Firebase
+                await productRef.update({
+                    ...product,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+                });
 
-            console.log(`Producto ${product.id} actualizado en la colección ${model}.`);
+                console.log(`Producto ${product.id} actualizado en la colección ${model}.`);
+            } else {
+                console.log(`Producto ${product.id} no tiene cambios. No se actualizó.`);
+            }
         } else {
             // Producto nuevo
             const historyEntry = {
-                date: today,
+                date: today.toISOString(),
                 data: product,
                 changes: null, // No hay cambios para un producto nuevo
             };
@@ -58,9 +68,8 @@ export async function saveScrapedProduct(product, model) {
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 history: [historyEntry],
             };
-            console.log("Datos anteriores desde Firebase:", previousData);
+
             console.log("Datos actuales scrapeados:", product);
-            console.log("Cambios detectados:", detectedChanges);
 
             await productRef.set(newData);
             console.log(`Nuevo producto ${product.id} guardado en la colección ${model}.`);
