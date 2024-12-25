@@ -44,90 +44,126 @@
 
 
 import puppeteer from "puppeteer";
-import { scrapeProductDetails, processScrapedData } from "./services/scraper.js";
+import { scrapeProductDetails } from "./services/scraper.js";
+import { 
+    getAllProductsFromCollection, 
+    updateProductInFirestore, 
+    moveToTerminatedCollection 
+} from "./services/firestoreService.js";
 import fs from "fs/promises";
 
-async function readProductList(filePath) {
-  try {
-    const fileContent = await fs.readFile(filePath, "utf-8");
-    const productNames = fileContent.split("\n").map((line) => line.trim()).filter((line) => line);
-    console.log(`Leídas ${productNames.length} líneas desde ${filePath}`);
-    return productNames;
-  } catch (error) {
-    console.error(`Error al leer el archivo ${filePath}:`, error);
-    throw error;
-  }
+// Recupera todos los productos de Firebase, los busca en Wallapop y actualiza los cambios detectados
+async function processFirebaseCollection(collectionName) {
+    console.log(`Procesando la colección: ${collectionName}`);
+
+    try {
+        const firebaseProducts = await getAllProductsFromCollection(collectionName);
+
+        for (const firebaseProduct of firebaseProducts) {
+            const { id, url, reservado } = firebaseProduct;
+
+            try {
+                if (reservado) {
+                    // Mover a la colección de terminados si está reservado
+                    await moveToTerminatedCollection(collectionName, firebaseProduct, "Reservado");
+                    console.log(`Producto reservado con ID ${id} movido a terminados.`);
+                    continue;
+                }
+
+                // Buscar producto en Wallapop
+                const scrapedProduct = await scrapeProductDetails(url);
+
+                if (!scrapedProduct) {
+                    // Si no existe en Wallapop, mover a la colección terminados
+                    await moveToTerminatedCollection(collectionName, firebaseProduct, "No disponible");
+                    console.log(`Producto con ID ${id} no encontrado en Wallapop. Movido a terminados.`);
+                    continue;
+                }
+
+                // Comparar y actualizar en Firebase si hay cambios
+                const updateResult = await updateProductInFirestore(collectionName, firebaseProduct, scrapedProduct);
+
+                if (updateResult.updated) {
+                    console.log(`Producto con ID ${id} actualizado con cambios detectados.`);
+                } else {
+                    console.log(`Producto con ID ${id} ya estaba actualizado.`);
+                }
+            } catch (error) {
+                console.error(`Error procesando el producto con ID ${id}:`, error);
+            }
+        }
+
+        console.log(`Procesamiento completado para la colección: ${collectionName}`);
+    } catch (error) {
+        console.error(`Error al procesar la colección ${collectionName}:`, error);
+    }
 }
 
-async function scrapeWallapopForProduct(model) {
-  if (!model || typeof model !== "string") {
-    throw new Error("Modelo inválido. Por favor, proporciona un modelo válido para el scraping.");
-  }
+// Compara los productos de Firebase y Wallapop para detectar cambios
+function compareProducts(firebaseProduct, scrapedProduct) {
+    const updatedData = {};
 
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
-
-  try {
-    const searchUrl = `https://es.wallapop.com/app/search?filters_source=search_box&keywords=${encodeURIComponent(model)}`;
-    console.log(`Iniciando scraping para el modelo: ${model}`);
-    console.log(`Navegando a la URL: ${searchUrl}`);
-    await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector(".ItemCardList__item");
-
-    // Extraer URLs de productos
-    const productLinks = await page.evaluate(() =>
-      Array.from(document.querySelectorAll("a.ItemCardList__item")).map((item) => item.href)
-    );
-    console.log("Productos encontrados:", productLinks);
-
-    // Extraer detalles de cada producto
-    const detailedProducts = [];
-    for (const link of productLinks) {
-      try {
-        const details = await scrapeProductDetails(link);
-        detailedProducts.push({ url: link, ...details });
-      } catch (error) {
-        console.error(`Error extrayendo detalles para ${link}:`, error);
-      }
+    for (const key in scrapedProduct) {
+        if (scrapedProduct[key] !== undefined && scrapedProduct[key] !== firebaseProduct[key]) {
+            updatedData[key] = scrapedProduct[key];
+        }
     }
 
-    // Procesar y guardar los productos
-    await processScrapedData(detailedProducts, model); // Pasar el modelo para usarlo como nombre de colección
+    return updatedData;
+}
 
-    console.log(`Scraping completado con éxito para el modelo: ${model}.`);
-    return detailedProducts;
-  } catch (error) {
-    console.error(`Error general en el scraping del modelo "${model}":`, error);
-    return [];
-  } finally {
-    await browser.close();
-  }
+async function fetchAndCompareProductsFromFirebaseAndWallapop() {
+    try {
+        const productListFilePath = "./product-list.txt";
+        const productNames = await fs.readFile(productListFilePath, "utf-8")
+            .then(content => content.split("\n").map(line => line.trim()).filter(Boolean));
+
+        for (const productName of productNames) {
+            console.log(`Procesando la colección: ${productName}`);
+            const productsFromFirebase = await getAllProductsFromCollection(productName);
+
+            if (!productsFromFirebase || productsFromFirebase.length === 0) {
+                console.log(`No se encontraron productos en la colección ${productName}.`);
+                continue;
+            }
+
+            console.log(`Productos recuperados de Firebase para ${productName}:`, productsFromFirebase);
+
+            for (const firebaseProduct of productsFromFirebase) {
+                const url = `https://es.wallapop.com/item/${firebaseProduct.id}`;
+                const scrapedProduct = await scrapeProductDetails(url);
+
+                if (!scrapedProduct) {
+                    console.log(`Producto con ID ${firebaseProduct.id} ya no existe en Wallapop.`);
+                    await moveToTerminatedCollection(firebaseProduct, productName, true);
+                } else {
+                    const updatedData = compareProducts(firebaseProduct, scrapedProduct);
+
+                    if (Object.keys(updatedData).length > 0) {
+                        console.log(`Cambios detectados para ${firebaseProduct.id}. Actualizando...`);
+                        await updateProductInFirestore(firebaseProduct.id, productName, updatedData);
+                    } else {
+                        console.log(`No se detectaron cambios para ${firebaseProduct.id}.`);
+                    }
+                }
+            }
+
+            console.log(`Procesamiento completado para la colección: ${productName}.`);
+        }
+    } catch (error) {
+        console.error("Error al procesar productos desde Firebase y Wallapop:", error);
+    }
 }
 
 (async () => {
-  const filePath = "./product-list.txt"; // Ruta al archivo con los nombres de productos
-  try {
-    const productNames = await readProductList(filePath);
-    if (productNames.length === 0) {
-      console.error("No se encontraron productos en la lista.");
-      process.exit(1);
+    try {
+        await fetchAndCompareProductsFromFirebaseAndWallapop();
+    } catch (error) {
+        console.error("Error general en la ejecución del scraper:", error);
+        process.exit(1);
     }
-
-    for (const model of productNames) {
-      console.log(`Procesando modelo: ${model}`);
-      try {
-        await scrapeWallapopForProduct(model);
-      } catch (error) {
-        console.error(`Error procesando el modelo "${model}":`, error);
-      }
-    }
-
-    console.log("Scraping completado para todos los productos en la lista.");
-  } catch (error) {
-    console.error("Error general al ejecutar el scraper:", error);
-    process.exit(1);
-  }
 })();
+
 
 
 

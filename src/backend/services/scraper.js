@@ -1,6 +1,6 @@
 import puppeteer from "puppeteer";
 import fs from "fs/promises";
-import { saveScrapedProduct } from "./firestoreService.js";
+import { saveScrapedProduct, moveToTerminatedCollection } from "./firestoreService.js";
 import { updateArticle, shouldScrapeAgain } from "./articleTracker.js"; // Importamos funciones de seguimiento
 
 // Valida si un título es relevante basado en términos irrelevantes
@@ -163,13 +163,19 @@ async function processScrapedData(products, model) {
 
         try {
             await saveScrapedProduct(productData, model, updateResult.changes || {});
+
+            // Mover a colección terminados si está reservado o no existe
+            if (productData.reservado) {
+                console.log(`Producto ${productData.id} marcado como reservado. Moviendo a colección terminados.`);
+                await moveToTerminatedCollection(productData, model);
+            }
+
             console.log(`Producto guardado en Firestore: ${productData.id}`);
         } catch (error) {
             console.error(`Error al guardar producto en Firestore: ${productData.id}`, error);
         }
     }
 }
-
 
 // Función principal para leer una lista de productos, scrapear y guardar
 async function scrapeProductsFromList(filePath, model) {
@@ -201,4 +207,6 @@ async function scrapeProductsFromList(filePath, model) {
 }
 
 export { scrapeProductsFromList, processScrapedData, scrapeProductDetails };
+
+
 
