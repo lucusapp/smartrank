@@ -1,56 +1,134 @@
+import puppeteer from "puppeteer";
+import fs from "fs/promises";
+import { 
+  saveOrUpdateProduct, 
+  moveToTerminatedCollection, 
+  getProcessedIds 
+} from "./services/firestoreService.js";
+import { scrapeProductDetails } from "./services/scraper.js";
 
-import dotenv from "dotenv";
-dotenv.config();
-
-//console.log("Variables de entorno:", process.env);
-
-import express from "express"
-import { scrapeProductsFromList } from "../backend/services/scraper.js";
-
-// Ruta al archivo que contiene las URLs de productos
-const filePath = "./product-list.txt";
-
-// Modelo que se utilizará para categorizar o guardar en Firestore
-const model = "products";
-
-// Ejecutar el proceso de scraping
-(async () => {
-    try {
-        console.log("Iniciando el scraping de productos...");
-        await scrapeProductsFromList(filePath, model);
-        console.log("Proceso de scraping finalizado.");
-    } catch (error) {
-        console.error("Error durante el scraping:", error);
-    }
-})();
-
-import  db  from "../backend/config/firebase.js";
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-app.get("/", (req, res) => {
-  res.send("Wallapop Scraper API is running.");
-});
-
-app.get("/scrape", async (req, res) => {
-  const model = req.query.model;
-  if (!model) {
-    return res.status(400).send("Por favor, especifica un modelo en la URL.");
+// Leer la lista de productos desde un archivo
+async function readProductList(filePath) {
+  try {
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    return fileContent.split("\n").map(line => line.trim()).filter(Boolean);
+  } catch (error) {
+    console.error(`Error al leer el archivo ${filePath}:`, error);
+    throw error;
   }
+}
+
+// Procesar productos existentes en Firebase
+async function processExistingProducts(model, firebaseProducts) {
+  const browser = await puppeteer.launch();
+  const page = await browser.newPage();
+
+  for (const productId of firebaseProducts) {
+    try {
+      console.log(`Verificando producto en Wallapop: ${productId}`);
+      const productUrl = `https://es.wallapop.com/item/${productId}`;
+
+      await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+
+      const details = await scrapeProductDetails(productUrl);
+
+      if (!details || details.reservado) {
+        console.log(`Producto ${productId} no disponible o reservado. Moviendo a terminados.`);
+        await moveToTerminatedCollection({ id: productId }, model);
+      } else {
+        console.log(`Actualizando datos del producto: ${productId}`);
+        await saveOrUpdateProduct(details, model);
+      }
+    } catch (error) {
+      console.error(`Error procesando el producto ${productId}:`, error);
+    }
+  }
+
+  await browser.close();
+}
+
+// Scraping de nuevos productos en Wallapop
+async function scrapeNewProducts(model, existingIds) {
+  const browser = await puppeteer.launch();
+  const page = await browser.newPage();
+
+  const searchUrl = `https://es.wallapop.com/app/search?filters_source=search_box&keywords=${encodeURIComponent(model)}`;
+  console.log(`Buscando nuevos productos para el modelo: ${model}`);
 
   try {
-    console.log(`Iniciando scraping para el modelo: ${model}`);
-    const products = await scrapeWallapopListings(`https://wallapop.com/${model}`);
-    await processScrapedData(products, model); // Pasa el modelo
-    res.status(200).send(`Scraping completado para el modelo: ${model}`);
-  } catch (error) {
-    console.error("Error durante el scraping:", error);
-    res.status(500).send("Ocurrió un error durante el scraping.");
-  }
-});
+    await page.goto(searchUrl, { waitUntil: "domcontentloaded" });
+    await page.waitForSelector(".ItemCardList__item", { timeout: 10000 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+    const productLinks = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("a.ItemCardList__item")).map(link => link.href)
+    );
+
+    for (const link of productLinks) {
+      const productId = link.split("/").pop();
+
+      if (existingIds.has(productId)) {
+        console.log(`Producto ya procesado: ${productId}. Omitiendo.`);
+        continue;
+      }
+
+      try {
+        const details = await scrapeProductDetails(link);
+        if (details) {
+          console.log(`Guardando nuevo producto: ${productId}`);
+          await saveOrUpdateProduct(details, model);
+        }
+      } catch (error) {
+        console.error(`Error scrapeando el producto en ${link}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error(`Error buscando nuevos productos para el modelo ${model}:`, error);
+  } finally {
+    await browser.close();
+  }
+}
+
+(async () => {
+  const filePath = "./product-list.txt"; // Archivo con la lista de modelos
+
+  try {
+    const models = await readProductList(filePath);
+    if (!models.length) {
+      console.error("La lista de productos está vacía.");
+      return;
+    }
+
+    for (const model of models) {
+      console.log(`Iniciando proceso para el modelo: ${model}`);
+
+      try {
+        // Obtener IDs procesados de Firebase
+        const firebaseProductIds = await getProcessedIds(model);
+
+        if (!(firebaseProductIds instanceof Set)) {
+          console.error(
+            `Error: Se esperaba que getProcessedIds devolviera un Set, pero se recibió:`,
+            firebaseProductIds
+          );
+          continue;
+        }
+
+        // Fase 1: Procesar productos existentes en Firebase
+        await processExistingProducts(model, firebaseProductIds);
+
+        // Fase 2: Scraping de nuevos productos
+        await scrapeNewProducts(model, firebaseProductIds);
+      } catch (error) {
+        console.error(`Error en el proceso para el modelo ${model}:`, error);
+      }
+    }
+
+    console.log("Proceso completado para todos los modelos.");
+  } catch (error) {
+    console.error("Error general al ejecutar el programa:", error);
+  }
+})();
+
+
+
 

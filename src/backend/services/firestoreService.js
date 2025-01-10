@@ -1,55 +1,70 @@
 import admin from "firebase-admin";
 import db from "../config/firebase.js";
 
-export async function saveScrapedProduct(product, model) {
-    console.log(`Iniciando guardado de producto: ${product.id}`);
+/**
+ * Guarda o actualiza un producto en Firebase.
+ * @param {Object} product - Datos del producto a guardar o actualizar.
+ * @param {string} model - Nombre de la colección (modelo del producto).
+ */
+export async function saveOrUpdateProduct(product, model) {
+    if (!product || !product.id) {
+        console.error("Error: El producto no tiene un ID válido. No se puede guardar o actualizar.");
+        return;
+    }
+
+    console.log(`Iniciando guardado/actualización de producto: ${product.id}`);
 
     const productRef = db.collection(model).doc(product.id);
     const today = new Date();
 
     try {
         const existingProduct = await productRef.get();
-
         let detectedChanges = {};
-        if (existingProduct.exists) {
-            const previousData = existingProduct.data(); // Datos previos en Firebase
+        let previousData = null;
 
-            // Detectar los cambios comparando con los datos scrapeados
+        if (existingProduct.exists) {
+            previousData = existingProduct.data();
+
+            // Propiedades a excluir del proceso de comparación
+            const excludedProperties = ["imagenes"];
+
+            // Detectar cambios únicamente en campos modificados, excluyendo las propiedades no relevantes
             Object.keys(product).forEach((key) => {
-                const previousValue = previousData[key]?.toString() || ""; // Convertir a string
-                const currentValue = product[key]?.toString() || ""; // Convertir a string
+                if (excludedProperties.includes(key)) return; // Omitir la comparación de esta propiedad
+
+                const previousValue = previousData[key] ?? "No disponible";
+                const currentValue = product[key] ?? "";
 
                 if (previousValue !== currentValue) {
                     detectedChanges[key] = {
-                        previous: previousData[key] || "No disponible",
-                        current: product[key],
+                        previous: previousValue,
+                        current: currentValue,
                     };
                 }
             });
 
-            console.log(`Cambios detectados para ${product.id}:`, detectedChanges);
+            if (Object.keys(detectedChanges).length > 0) {
+                // Registrar en el historial solo si hay cambios
+                const historyEntry = {
+                    date: today.toISOString(),
+                    changes: detectedChanges,
+                };
 
-            // Crear entrada de historial con cambios detectados
-            const historyEntry = {
-                date: today,
-                data: { ...product },
-                changes: Object.keys(detectedChanges).length > 0 ? detectedChanges : null,
-            };
+                await productRef.update({
+                    ...product,
+                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+                });
 
-            // Actualizar producto con historial en Firebase
-            await productRef.update({
-                ...product,
-                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                history: admin.firestore.FieldValue.arrayUnion(historyEntry),
-            });
-
-            console.log(`Producto ${product.id} actualizado en la colección ${model}.`);
+                console.log(`Producto ${product.id} actualizado en la colección ${model}.`);
+            } else {
+                console.log(`Producto ${product.id} no tiene cambios. No se actualizó.`);
+            }
         } else {
             // Producto nuevo
             const historyEntry = {
-                date: today,
-                data: product,
-                changes: null, // No hay cambios para un producto nuevo
+                date: today.toISOString(),
+                changes: null, // Sin cambios para productos nuevos
             };
 
             const newData = {
@@ -58,16 +73,68 @@ export async function saveScrapedProduct(product, model) {
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 history: [historyEntry],
             };
-            console.log("Datos anteriores desde Firebase:", previousData);
-            console.log("Datos actuales scrapeados:", product);
-            console.log("Cambios detectados:", detectedChanges);
 
             await productRef.set(newData);
             console.log(`Nuevo producto ${product.id} guardado en la colección ${model}.`);
         }
     } catch (error) {
-        console.error(`Error al guardar el producto ${product.id} en Firebase:`, error);
+        console.error(`Error al guardar o actualizar el producto ${product.id} en Firebase:`, error);
     }
 }
 
-export default { saveScrapedProduct };
+
+/**
+ * Elimina un producto de la colección principal y lo transfiere a la colección "terminados".
+ * @param {Object} product - Datos del producto a mover.
+ * @param {string} model - Nombre de la colección original (modelo del producto).
+ */
+export async function moveToTerminatedCollection(product, model) {
+    if (!product || !product.id) {
+        console.error("Error: El producto no tiene un ID válido. No se puede mover a 'terminados'.");
+        return;
+    }
+
+    console.log(`Moviendo producto ${product.id} a la colección terminados/${model}`);
+
+    // Construir correctamente el path de la colección
+    const terminatedRef = db.collection(`terminados/${model}`).doc(product.id);
+    const productRef = db.collection(model).doc(product.id);
+
+    try {
+        // Agregar el producto a la colección "terminados"
+        await terminatedRef.set({
+            ...product,
+            terminatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Eliminar el producto de la colección principal
+        await productRef.delete();
+
+        console.log(`Producto ${product.id} movido correctamente a 'terminados/${model}'.`);
+    } catch (error) {
+        console.error(`Error al mover el producto ${product.id} a 'terminados/${model}':`, error);
+    }
+}
+
+/**
+ * Obtiene los IDs de los productos existentes en una colección.
+ * @param {string} model - Nombre de la colección (modelo del producto).
+ * @returns {Promise<Set<string>>} - Conjunto de IDs de productos existentes.
+ */
+export async function getProcessedIds(model) {
+    try {
+        const snapshot = await db.collection(model).get();
+        const ids = new Set();
+
+        snapshot.forEach((doc) => ids.add(doc.id));
+        console.log(`IDs procesados en la colección ${model}:`, ids);
+
+        return ids;
+    } catch (error) {
+        console.error(`Error al obtener los IDs procesados de la colección ${model}:`, error);
+        return new Set();
+    }
+}
+
+export default { saveOrUpdateProduct, moveToTerminatedCollection, getProcessedIds };
+
