@@ -32,7 +32,7 @@ const updateArticle = (id, newData) => {
         return { status: "unchanged", id, needsRescrape: false };
     }
 
-    const updatedRecord = { date: today, data: newData, changes };
+    const updatedRecord = { date: today, changes };
     article.history.push(updatedRecord);
     article.lastUpdate = today;
 

@@ -1,4 +1,4 @@
-# smartrank
+
 Samsung Galaxy S23 Ultra
 Samsung Galaxy S23 Plus
 Samsung Galaxy S23
@@ -38,7 +38,10 @@ Xiaomi Redmi 12
 Xiaomi Redmi A2
 Xiaomi Redmi 10C
 Xiaomi Poco F5
+Xiaomi Poco F6
 Xiaomi Poco X5 Pro
+Xiaomi Poco X6
+Xiaomi Poco X7
 Xiaomi Poco M5
 Xiaomi Poco C55
 Xiaomi 13 Ultra

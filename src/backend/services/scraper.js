@@ -1,8 +1,6 @@
 import puppeteer from "puppeteer";
 import fs from "fs/promises";
-import { updateArticle } from "./articleTracker.js";
-import { saveScrapedProduct } from "./firestoreService.js";
-import { scrapeReviewsData } from "./reviewsData.js"; // Importamos el módulo para valoraciones
+import { saveOrUpdateProduct, getProcessedIds } from "./firestoreService.js"; // Importamos desde firebaseService.js
 
 // Nueva función para validar títulos irrelevantes
 function isRelevantTitle(title) {
@@ -31,33 +29,54 @@ async function scrapeProductDetails(productUrl) {
 
     try {
         console.log(`Navegando a la URL: ${productUrl}`);
-        await page.goto(productUrl, { waitUntil: "networkidle2", timeout: 30000 });
+        await page.goto(productUrl, { waitUntil: "domcontentloaded" });
+        await page.waitForSelector(".ItemDetailCarousel__initialBackground img[slot='carousel-content']", { timeout: 5000 }).catch(() => console.warn("Imágenes no encontradas."));
+        await page.waitForSelector('.item-detail-header_ItemDetailHeader__fillRemainingWidth__8TxnC a', { timeout: 5000 }).catch(() => console.warn("URL del perfil no encontrada."));
 
         const urlParts = productUrl.split("/");
         const articleId = urlParts[urlParts.length - 1]; // ID del producto desde la URL
 
         const productDetails = await page.evaluate(() => {
-            const titulo = document.querySelector(
-                '.item-detail_ItemDetail__title__wcPRl'
+            const caracteristicasLinea = document.querySelector(
+                '.item-detail-additional-specifications_ItemDetailAdditionalSpecifications__characteristics__Ut9iT'
             )?.textContent.trim() || "";
+
+            let estado = "";
+            let marca = "";
+            let modelo = "";
+            let capacidad = "";
+            let color = "";
+
+            if (caracteristicasLinea) {
+                const partes = caracteristicasLinea.split(" · ");
+                estado = partes.shift();
+                color = partes.pop();
+                if (partes[partes.length - 1]?.includes("GB")) {
+                    capacidad = partes.pop();
+                }
+                if (partes.length === 2) {
+                    [marca, modelo] = partes;
+                } else if (partes.length === 1) {
+                    modelo = partes[0];
+                }
+            }
 
             const precio = document.querySelector(
                 '.item-detail-price_ItemDetailPrice--standard__TxPXr'
             )?.textContent.trim() || "";
-
+            const titulo = document.querySelector(
+                '.item-detail_ItemDetail__title__wcPRl'
+            )?.textContent.trim() || "";
             const description = document.querySelector(
                 '.item-detail_ItemDetail__description__7rXXT'
             )?.textContent.trim() || "";
-
             const reservado = !!document.querySelector('wallapop-badge[badge-type="reserved"]');
-            const visitas = document.querySelector(
+            const views = document.querySelector(
                 '.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Views"]'
             )?.textContent.trim() || "0";
-
-            const favoritos = document.querySelector(
+            const favorites = document.querySelector(
                 '.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Favorites"]'
             )?.textContent.trim() || "0";
-
             const ultimaEdicion = document.querySelector(
                 ".item-detail-stats_ItemDetailStats__description__vjz96"
             )?.textContent.trim() || "Desconocido";
@@ -78,23 +97,28 @@ async function scrapeProductDetails(productUrl) {
                 : null;
 
             return {
-                titulo,
+                estado,
+                marca,
+                modelo,
+                capacidad,
+                color,
                 precio,
+                titulo,
                 description,
                 reservado,
-                visitas,
-                favoritos,
+                views,
+                favorites,
                 ultimaEdicion,
                 imagenes,
                 profileHref, // Referencia al perfil para obtener valoraciones
             };
         });
 
-        // Validamos si el título es relevante
+        // Valida si el título del producto es relevante
         if (!isRelevantTitle(productDetails.titulo)) {
             console.log(`Producto ignorado por título irrelevante: ${productDetails.titulo}`);
             await browser.close();
-            return null; // Ignoramos este producto
+            return null;
         }
 
         productDetails.lastScraped = new Date().toISOString();
@@ -114,46 +138,15 @@ async function scrapeProductDetails(productUrl) {
 // Función para procesar y guardar datos
 async function processScrapedData(products, model) {
     for (const product of products) {
-        const updateResult = updateArticle(product.id, product);
-
-        console.log(`Resultado de updateArticle para ${product.id}:`, updateResult);
-
         try {
-            await saveScrapedProduct(product, model, updateResult.changes || {});
-            console.log(`Producto guardado en Firestore: ${product.id}`);
+            await saveOrUpdateProduct(product, model);
+            console.log(`Producto guardado o actualizado en Firebase: ${product.id}`);
         } catch (error) {
-            console.error(`Error al guardar producto en Firestore: ${product.id}`, error);
+            console.error(`Error al guardar o actualizar producto en Firebase: ${product.id}`, error);
         }
     }
 }
 
-// Función principal para leer, scrapear y guardar
-async function scrapeProductsFromList(filePath, model) {
-    try {
-        const urls = await readProductList(filePath);
-
-        for (const url of urls) {
-            try {
-                const productDetails = await scrapeProductDetails(url);
-                if (productDetails && productDetails.profileHref) {
-                    const reviews = await scrapeReviewsData(productDetails.profileHref);
-                    productDetails.reviews = reviews;
-                }
-                if (productDetails) {
-                    console.log(`Guardando producto: ${productDetails.id}`);
-                    await processScrapedData([productDetails], model);
-                }
-            } catch (error) {
-                console.error(`Error al procesar la URL: ${url}`, error);
-            }
-        }
-
-        console.log("Proceso completado.");
-    } catch (error) {
-        console.error("Error al procesar el archivo de lista:", error);
-    }
-}
-
-export { scrapeProductsFromList, processScrapedData, scrapeProductDetails };
+export { processScrapedData, scrapeProductDetails };
 
 
