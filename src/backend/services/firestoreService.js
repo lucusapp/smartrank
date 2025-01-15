@@ -26,7 +26,7 @@ export async function saveOrUpdateProduct(product, model) {
             previousData = existingProduct.data();
 
             // Propiedades a excluir del proceso de comparación
-            const excludedProperties = ["imagenes"];
+            const excludedProperties = ["imageUrls"];
 
             // Detectar cambios únicamente en campos modificados, excluyendo las propiedades no relevantes
             Object.keys(product).forEach((key) => {
@@ -84,37 +84,45 @@ export async function saveOrUpdateProduct(product, model) {
 
 
 /**
- * Elimina un producto de la colección principal y lo transfiere a la colección "terminados".
+ * Elimina un producto de la colección principal y lo transfiere a la subcolección "products" dentro de "terminados",
+ * manteniendo todos los campos originales del producto.
  * @param {Object} product - Datos del producto a mover.
  * @param {string} model - Nombre de la colección original (modelo del producto).
  */
-export async function moveToTerminatedCollection(product, model) {
-    if (!product || !product.id) {
-        console.error("Error: El producto no tiene un ID válido. No se puede mover a 'terminados'.");
+export async function moveToTerminatedCollection(productId, model) {
+    if (!productId) {
+        console.error("Error: El ID del producto no es válido. No se puede mover a 'terminados'.");
         return;
     }
 
-    console.log(`Moviendo producto ${product.id} a la colección terminados/${model}`);
-
-    // Construir correctamente el path de la colección
-    const terminatedRef = db.collection(`terminados/${model}`).doc(product.id);
-    const productRef = db.collection(model).doc(product.id);
+    const sanitizedModel = model.replace(/["']/g, ""); // Sanitiza el modelo
+    const productRef = db.collection(model).doc(productId);
+    const terminatedRef = db.collection("terminados").doc(sanitizedModel).collection("products").doc(productId);
 
     try {
-        // Agregar el producto a la colección "terminados"
+        const productSnapshot = await productRef.get();
+        if (!productSnapshot.exists) {
+            console.error(`Producto ${productId} no encontrado en la colección ${model}.`);
+            return;
+        }
+
+        const productData = productSnapshot.data();
+        console.log(`Moviendo producto ${productId} a 'terminados' con los datos existentes.`);
+
+        // Mover producto a "terminados"
         await terminatedRef.set({
-            ...product,
+            ...productData,
             terminatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        // Eliminar el producto de la colección principal
+        // Eliminar el producto de la colección original
         await productRef.delete();
-
-        console.log(`Producto ${product.id} movido correctamente a 'terminados/${model}'.`);
+        console.log(`Producto ${productId} movido correctamente a 'terminados/${sanitizedModel}/products'.`);
     } catch (error) {
-        console.error(`Error al mover el producto ${product.id} a 'terminados/${model}':`, error);
+        console.error(`Error al mover el producto ${productId} a 'terminados':`, error);
     }
 }
+
 
 /**
  * Obtiene los IDs de los productos existentes en una colección.
@@ -137,4 +145,5 @@ export async function getProcessedIds(model) {
 }
 
 export default { saveOrUpdateProduct, moveToTerminatedCollection, getProcessedIds };
+
 
