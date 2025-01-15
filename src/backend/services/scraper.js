@@ -114,9 +114,9 @@ async function scrapeProductDetails(productUrl) {
             };
         });
 
-        // Valida si el título del producto es relevante
-        if (!isRelevantTitle(productDetails.titulo)) {
-            console.log(`Producto ignorado por título irrelevante: ${productDetails.titulo}`);
+        // Validar datos críticos
+        if (!productDetails.titulo || !productDetails.precio || productDetails.imagenes.length === 0) {
+            console.warn(`Campos clave faltantes para el producto en ${productUrl}:`, productDetails);
             await browser.close();
             return null;
         }
@@ -134,6 +134,8 @@ async function scrapeProductDetails(productUrl) {
         return null;
     }
 }
+
+
 
 // Función para procesar y guardar datos
 async function processScrapedData(products, model) {

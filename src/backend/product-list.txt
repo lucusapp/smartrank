@@ -1,4 +1,3 @@
-"Samsung Galaxy S23 Ultra"
 "Samsung Galaxy S23 Plus"
 "Samsung Galaxy S23"
 "Samsung Galaxy A54"

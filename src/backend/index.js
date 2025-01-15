@@ -24,34 +24,49 @@ async function processExistingProducts(model, firebaseProducts) {
   const page = await browser.newPage();
 
   for (const productId of firebaseProducts) {
-    try {
-      console.log(`Verificando producto en Wallapop: ${productId}`);
-      const productUrl = `https://es.wallapop.com/item/${productId}`;
+      try {
+          console.log(`Verificando producto en Wallapop: ${productId}`);
+          const productUrl = `https://es.wallapop.com/item/${productId}`;
+          console.log(`Navegando a la URL: ${productUrl}`);
 
-      await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+          await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-      const details = await scrapeProductDetails(productUrl);
+          // Scrapea los detalles del producto
+          const details = await scrapeProductDetails(productUrl);
 
-      if (!details || details.reservado) {
-        console.log(`Producto ${productId} no disponible o reservado. Moviendo a terminados.`);
-        await moveToTerminatedCollection({ id: productId }, model);
-      } else {
-        console.log(`Actualizando datos del producto: ${productId}`);
-        await saveOrUpdateProduct(details, model);
+          // Detectar datos incompletos o scraping fallido
+          if (!details) {
+              console.warn(`Datos incompletos o scraping fallido para el producto ${productId}. Moviendo a 'terminados'.`);
+              // Mueve el producto con sus datos existentes a la colección "terminados"
+              await moveToTerminatedCollection(productId, model);
+              continue;
+          }
+
+          // Verificar si el producto está reservado
+          if (details.reservado) {
+              console.log(`Producto ${productId} está reservado. Moviendo a 'terminados'.`);
+              await moveToTerminatedCollection(productId, model);
+              continue;
+          }
+
+          // Si los datos son válidos, actualiza o guarda el producto
+          console.log(`Actualizando datos del producto: ${productId}`);
+          await saveOrUpdateProduct(details, model);
+      } catch (error) {
+          console.error(`Error procesando el producto ${productId}:`, error);
+          console.log(`Producto ${productId} será movido a 'terminados' debido al error.`);
+          // Manejo de errores: Mueve el producto a "terminados"
+          await moveToTerminatedCollection(productId, model);
       }
-    } catch (error) {
-      console.error(`Error procesando el producto ${productId}:`, error);
-    }
   }
 
   await browser.close();
 }
 
-// Scraping de nuevos productos en Wallapop
-async function scrapeNewProducts(model, existingIds) {
-  const browser = await puppeteer.launch();
-  const page = await browser.newPage();
 
+
+// Scraping de nuevos productos en Wallapop
+async function scrapeNewProducts(model, existingIds, page) {
   const searchUrl = `https://es.wallapop.com/app/search?filters_source=search_box&keywords=${encodeURIComponent(model)}`;
   console.log(`Buscando nuevos productos para el modelo: ${model}`);
 
@@ -83,8 +98,6 @@ async function scrapeNewProducts(model, existingIds) {
     }
   } catch (error) {
     console.error(`Error buscando nuevos productos para el modelo ${model}:`, error);
-  } finally {
-    await browser.close();
   }
 }
 
@@ -97,6 +110,9 @@ async function scrapeNewProducts(model, existingIds) {
       console.error("La lista de productos está vacía.");
       return;
     }
+
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
 
     for (const model of models) {
       console.log(`Iniciando proceso para el modelo: ${model}`);
@@ -114,20 +130,22 @@ async function scrapeNewProducts(model, existingIds) {
         }
 
         // Fase 1: Procesar productos existentes en Firebase
-        await processExistingProducts(model, firebaseProductIds);
+        await processExistingProducts(model, firebaseProductIds, page);
 
         // Fase 2: Scraping de nuevos productos
-        await scrapeNewProducts(model, firebaseProductIds);
+        await scrapeNewProducts(model, firebaseProductIds, page);
       } catch (error) {
         console.error(`Error en el proceso para el modelo ${model}:`, error);
       }
     }
 
+    await browser.close();
     console.log("Proceso completado para todos los modelos.");
   } catch (error) {
     console.error("Error general al ejecutar el programa:", error);
   }
 })();
+
 
 
 
