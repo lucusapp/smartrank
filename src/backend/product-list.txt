@@ -144,3 +144,4 @@
 "Tecno Phantom X2"
 "Tecno Camon 20 Pro"
 "Tecno Spark 10 Pro"
+"pantalla rota"

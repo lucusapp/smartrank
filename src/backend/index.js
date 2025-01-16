@@ -1,9 +1,10 @@
 import puppeteer from "puppeteer";
 import fs from "fs/promises";
-import { 
-  saveOrUpdateProduct, 
-  moveToTerminatedCollection, 
-  getProcessedIds 
+import {
+  saveOrUpdateProduct,
+  saveOrUpdateComplement,
+  moveToTerminatedCollection,
+  getProcessedIds,
 } from "./services/firestoreService.js";
 import { scrapeProductDetails } from "./services/scraper.js";
 
@@ -31,38 +32,32 @@ async function processExistingProducts(model, firebaseProducts) {
 
           await page.goto(productUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
 
-          // Scrapea los detalles del producto
           const details = await scrapeProductDetails(productUrl);
 
-          // Detectar datos incompletos o scraping fallido
+          // Si no se encontraron datos válidos, mover a terminados
           if (!details) {
-              console.warn(`Datos incompletos o scraping fallido para el producto ${productId}. Moviendo a 'terminados'.`);
-              // Mueve el producto con sus datos existentes a la colección "terminados"
+              console.log(`Producto ${productId} tiene datos incompletos o no disponibles. Moviendo a 'terminados'.`);
               await moveToTerminatedCollection(productId, model);
               continue;
           }
 
-          // Verificar si el producto está reservado
+          // Si el producto está reservado, mover a terminados
           if (details.reservado) {
               console.log(`Producto ${productId} está reservado. Moviendo a 'terminados'.`);
               await moveToTerminatedCollection(productId, model);
-              continue;
+          } else {
+              console.log(`Actualizando datos del producto: ${productId}`);
+              await saveOrUpdateProduct(details, model);
           }
-
-          // Si los datos son válidos, actualiza o guarda el producto
-          console.log(`Actualizando datos del producto: ${productId}`);
-          await saveOrUpdateProduct(details, model);
       } catch (error) {
           console.error(`Error procesando el producto ${productId}:`, error);
           console.log(`Producto ${productId} será movido a 'terminados' debido al error.`);
-          // Manejo de errores: Mueve el producto a "terminados"
           await moveToTerminatedCollection(productId, model);
       }
   }
 
   await browser.close();
 }
-
 
 
 // Scraping de nuevos productos en Wallapop
@@ -78,24 +73,43 @@ async function scrapeNewProducts(model, existingIds, page) {
       Array.from(document.querySelectorAll("a.ItemCardList__item")).map(link => link.href)
     );
 
-    for (const link of productLinks) {
-      const productId = link.split("/").pop();
+for (const link of productLinks) {
+    const productId = link.split("/").pop();
 
-      if (existingIds.has(productId)) {
+    if (existingIds.has(productId)) {
         console.log(`Producto ya procesado: ${productId}. Omitiendo.`);
         continue;
-      }
-
-      try {
-        const details = await scrapeProductDetails(link);
-        if (details) {
-          console.log(`Guardando nuevo producto: ${productId}`);
-          await saveOrUpdateProduct(details, model);
-        }
-      } catch (error) {
-        console.error(`Error scrapeando el producto en ${link}:`, error);
-      }
     }
+
+    try {
+        // Llamar a scrapeProductDetails pasando 'model'
+        const details = await scrapeProductDetails(link, model);
+
+        if (details) {
+            // Verificar si el producto fue considerado irrelevante
+            if (!details.isRelevant) {
+                console.log(`Guardando producto irrelevante como complemento: ${productId}`);
+                try {
+                    await saveOrUpdateComplement(details, model);
+                } catch (error) {
+                    console.error(
+                        `Error al guardar el complemento irrelevante ${productId}:`,
+                        error
+                    );
+                }
+            } else {
+                // Guardar producto relevante como producto principal
+                console.log(`Guardando nuevo producto: ${productId}`);
+                await saveOrUpdateProduct(details, model);
+            }
+        } else {
+            console.warn(`Datos incompletos para el producto ${productId}.`);
+        }
+    } catch (error) {
+        console.error(`Error scrapeando el producto en ${link}:`, error);
+    }
+}
+
   } catch (error) {
     console.error(`Error buscando nuevos productos para el modelo ${model}:`, error);
   }
@@ -145,7 +159,6 @@ async function scrapeNewProducts(model, existingIds, page) {
     console.error("Error general al ejecutar el programa:", error);
   }
 })();
-
 
 
 
