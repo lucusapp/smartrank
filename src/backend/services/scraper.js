@@ -1,46 +1,81 @@
 import puppeteer from "puppeteer";
 import fs from "fs/promises";
-import { saveOrUpdateProduct, getProcessedIds } from "./firestoreService.js"; // Importamos desde firebaseService.js
+import { saveOrUpdateProduct, saveOrUpdateComplement } from "./firestoreService.js"; // Importamos desde firebaseService.js
 
 // Nueva función para validar títulos irrelevantes
 function isRelevantTitle(title) {
-    const irrelevantTerms = ["funda", "carcasa", "pantalla", "protector", "cargador"];
+    const irrelevantTerms = ["funda", "carcasa", "protector"];
     const lowerTitle = title.toLowerCase();
     return !irrelevantTerms.some(term => lowerTitle.includes(term));
 }
 
-// Función para leer URLs desde un archivo
-async function readProductList(filePath) {
-    try {
-        const fileContent = await fs.readFile(filePath, "utf-8");
-        const urls = fileContent.split("\n").map(line => line.trim()).filter(Boolean);
-        console.log(`Leídas ${urls.length} URLs desde ${filePath}`);
-        return urls;
-    } catch (error) {
-        console.error(`Error al leer el archivo ${filePath}:`, error);
-        throw error;
-    }
-}
+
 
 // Función para extraer detalles de un producto
-async function scrapeProductDetails(productUrl) {
+async function scrapeProductDetails(productUrl, model) {
     const browser = await puppeteer.launch({ headless: true });
     const page = await browser.newPage();
 
     try {
         console.log(`Navegando a la URL: ${productUrl}`);
         await page.goto(productUrl, { waitUntil: "domcontentloaded" });
+
+        const articleId = productUrl.split("/").pop(); // ID del producto desde la URL
+
+        // Extraer los detalles del producto
+        const productDetails = await extractProductDetails(page);
+
+        // Validar datos críticos
+        if (!articleId || !productDetails.titulo || !productDetails.precio || productDetails.imagenes.length === 0) {
+            console.warn(`Datos incompletos para el producto ${productUrl}:`, productDetails);
+            return null;
+        }
+
+        // Identificar si es relevante
+        if (!isRelevantTitle(productDetails.titulo)) {
+            console.log(`Producto considerado irrelevante por título: ${productDetails.titulo}`);
+
+            // Asegurarse de que el modelo esté definido
+            const mainModel = model || "ModeloDesconocido";
+
+            console.log(`Realizando scraping completo para producto irrelevante: ${articleId}`);
+            productDetails.id = articleId;
+
+            // Guardar como complemento
+            try {
+                await saveOrUpdateComplement(productDetails, mainModel);
+                console.log(`Complemento irrelevante guardado: ${productDetails.id}`);
+            } catch (error) {
+                console.error(`Error al guardar complemento irrelevante ${articleId}:`, error);
+            }
+
+            return null; // Producto irrelevante procesado
+        }
+
+        productDetails.lastScraped = new Date().toISOString();
+        const product = { id: articleId, ...productDetails };
+
+        console.log("Datos del producto extraídos:", product);
+        return product;
+
+    } catch (error) {
+        console.error(`Error scrapeando los detalles del producto en ${productUrl}:`, error);
+        return null;
+
+    } finally {
+        await browser.close(); // Asegura que el navegador se cierre siempre
+    }
+}
+
+// Subfunción para extraer los detalles del producto
+async function extractProductDetails(page) {
+    try {
         await page.waitForSelector(".ItemDetailCarousel__initialBackground img[slot='carousel-content']", { timeout: 5000 }).catch(() => console.warn("Imágenes no encontradas."));
         await page.waitForSelector('.item-detail-header_ItemDetailHeader__fillRemainingWidth__8TxnC a', { timeout: 5000 }).catch(() => console.warn("URL del perfil no encontrada."));
 
-        const urlParts = productUrl.split("/");
-        const articleId = urlParts[urlParts.length - 1]; // ID del producto desde la URL
-
-        const productDetails = await page.evaluate(() => {
-            const caracteristicasLinea = document.querySelector(
-                '.item-detail-additional-specifications_ItemDetailAdditionalSpecifications__characteristics__Ut9iT'
-            )?.textContent.trim() || "";
-
+        return await page.evaluate(() => {
+            // Lógica de extracción de datos
+            const caracteristicasLinea = document.querySelector('.item-detail-additional-specifications_ItemDetailAdditionalSpecifications__characteristics__Ut9iT')?.textContent.trim() || "";
             let estado = "";
             let marca = "";
             let modelo = "";
@@ -61,25 +96,13 @@ async function scrapeProductDetails(productUrl) {
                 }
             }
 
-            const precio = document.querySelector(
-                '.item-detail-price_ItemDetailPrice--standard__TxPXr'
-            )?.textContent.trim() || "";
-            const titulo = document.querySelector(
-                '.item-detail_ItemDetail__title__wcPRl'
-            )?.textContent.trim() || "";
-            const description = document.querySelector(
-                '.item-detail_ItemDetail__description__7rXXT'
-            )?.textContent.trim() || "";
+            const precio = document.querySelector('.item-detail-price_ItemDetailPrice--standard__TxPXr')?.textContent.trim() || "";
+            const titulo = document.querySelector('.item-detail_ItemDetail__title__wcPRl')?.textContent.trim() || "";
+            const description = document.querySelector('.item-detail_ItemDetail__description__7rXXT')?.textContent.trim() || "";
             const reservado = !!document.querySelector('wallapop-badge[badge-type="reserved"]');
-            const views = document.querySelector(
-                '.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Views"]'
-            )?.textContent.trim() || "0";
-            const favorites = document.querySelector(
-                '.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Favorites"]'
-            )?.textContent.trim() || "0";
-            const ultimaEdicion = document.querySelector(
-                ".item-detail-stats_ItemDetailStats__description__vjz96"
-            )?.textContent.trim() || "Desconocido";
+            const views = document.querySelector('.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Views"]')?.textContent.trim() || "0";
+            const favorites = document.querySelector('.item-detail-stats_ItemDetailStats__counters__ZFOFk [aria-label="Favorites"]')?.textContent.trim() || "0";
+            const ultimaEdicion = document.querySelector(".item-detail-stats_ItemDetailStats__description__vjz96")?.textContent.trim() || "Desconocido";
 
             let imagenes = [];
             try {
@@ -89,12 +112,8 @@ async function scrapeProductDetails(productUrl) {
                 console.error("Error al extraer imágenes:", imgError);
             }
 
-            const profileHrefElement = document.querySelector(
-                '.item-detail-header_ItemDetailHeader__fillRemainingWidth__8TxnC a'
-            );
-            const profileHref = profileHrefElement
-                ? profileHrefElement.href // Capturamos el href absoluto
-                : null;
+            const profileHrefElement = document.querySelector('.item-detail-header_ItemDetailHeader__fillRemainingWidth__8TxnC a');
+            const profileHref = profileHrefElement ? profileHrefElement.href : null;
 
             return {
                 estado,
@@ -110,30 +129,18 @@ async function scrapeProductDetails(productUrl) {
                 favorites,
                 ultimaEdicion,
                 imagenes,
-                profileHref, // Referencia al perfil para obtener valoraciones
+                profileHref,
             };
         });
 
-        // Validar datos críticos
-        if (!productDetails.titulo || !productDetails.precio || productDetails.imagenes.length === 0) {
-            console.warn(`Campos clave faltantes para el producto en ${productUrl}:`, productDetails);
-            await browser.close();
-            return null;
-        }
-
-        productDetails.lastScraped = new Date().toISOString();
-        const product = { id: articleId, ...productDetails };
-
-        console.log("Datos del producto extraídos:", product);
-        await browser.close();
-        return product;
-
     } catch (error) {
-        console.error(`Error scrapeando los detalles del producto en ${productUrl}:`, error);
-        await browser.close();
-        return null;
+        console.error("Error durante la extracción de detalles:", error);
+        return {};
     }
 }
+
+
+
 
 
 

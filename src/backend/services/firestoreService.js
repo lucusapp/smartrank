@@ -82,12 +82,91 @@ export async function saveOrUpdateProduct(product, model) {
     }
 }
 
+/**
+ * Guarda o actualiza un complemento en la colección "complementos".
+ * @param {Object} product - Datos del complemento.
+ * @param {string} mainProductName - Nombre del producto principal.
+ */
+export async function saveOrUpdateComplement(product, mainProductName) {
+    if (!product || !product.id || !mainProductName) {
+        console.error(
+            `Datos insuficientes para guardar el complemento: falta el ID o el modelo principal para el producto ${product?.id || "desconocido"}.`
+        );
+        return;
+    }
+
+    // if (!mainProductName) {
+    //     console.error(`Error: mainProductName es inválido para el complemento ${product.id}.`);
+    //     return; // O lanzar un error según sea necesario
+    // }
+
+    console.log(`Guardando/actualizando complemento: ${product.id} para ${mainProductName}`);
+    const complementRef = db.collection("complementos").doc(mainProductName).collection("products").doc(product.id);
+
+    try {
+        const existingComplement = await complementRef.get();
+        if (existingComplement.exists) {
+            await complementRef.update({
+                ...product,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            console.log(`Complemento ${product.id} actualizado en complementos/${mainProductName}`);
+        } else {
+            await complementRef.set({
+                ...product,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            console.log(`Nuevo complemento ${product.id} guardado en complementos/${mainProductName}`);
+        }
+    } catch (error) {
+        console.error(`Error al guardar o actualizar el complemento ${product.id}:`, error);
+    }
+}
+
 
 /**
- * Elimina un producto de la colección principal y lo transfiere a la subcolección "products" dentro de "terminados",
- * manteniendo todos los campos originales del producto.
- * @param {Object} product - Datos del producto a mover.
- * @param {string} model - Nombre de la colección original (modelo del producto).
+ * Mueve un complemento a la colección "complementosTerminados".
+ * @param {string} productId - ID del complemento.
+ * @param {string} mainProductName - Nombre del producto principal.
+ */
+export async function moveToTerminatedComplement(productId, mainProductName) {
+    if (!productId) {
+        console.error("Error: El ID del complemento no es válido. No se puede mover a 'complementosTerminados'.");
+        return;
+    }
+
+    const complementRef = db.collection("complementos").doc(mainProductName).collection("products").doc(productId);
+    const terminatedRef = db.collection("complementosTerminados").doc(mainProductName).collection("products").doc(productId);
+
+    try {
+        const complementSnapshot = await complementRef.get();
+        if (!complementSnapshot.exists) {
+            console.error(`Complemento ${productId} no encontrado en complementos/${mainProductName}`);
+            return;
+        }
+
+        const complementData = complementSnapshot.data();
+        console.log(`Moviendo complemento ${productId} a complementosTerminados/${mainProductName}`);
+
+        // Mover complemento a "complementosTerminados"
+        await terminatedRef.set({
+            ...complementData,
+            terminatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Eliminar el complemento de la colección original
+        await complementRef.delete();
+        console.log(`Complemento ${productId} movido correctamente a complementosTerminados/${mainProductName}`);
+    } catch (error) {
+        console.error(`Error al mover el complemento ${productId} a complementosTerminados:`, error);
+    }
+}
+
+/**
+ * Mueve un producto a la colección "terminados".
+ * @param {string} productId - ID del producto.
+ * @param {string} model - Nombre de la colección original.
  */
 export async function moveToTerminatedCollection(productId, model) {
     if (!productId) {
@@ -95,7 +174,7 @@ export async function moveToTerminatedCollection(productId, model) {
         return;
     }
 
-    const sanitizedModel = model.replace(/["']/g, ""); // Sanitiza el modelo
+    const sanitizedModel = model.replace(/["']/g, "");
     const productRef = db.collection(model).doc(productId);
     const terminatedRef = db.collection("terminados").doc(sanitizedModel).collection("products").doc(productId);
 
@@ -107,7 +186,7 @@ export async function moveToTerminatedCollection(productId, model) {
         }
 
         const productData = productSnapshot.data();
-        console.log(`Moviendo producto ${productId} a 'terminados' con los datos existentes.`);
+        console.log(`Moviendo producto ${productId} a terminados/${sanitizedModel}/products`);
 
         // Mover producto a "terminados"
         await terminatedRef.set({
@@ -117,12 +196,11 @@ export async function moveToTerminatedCollection(productId, model) {
 
         // Eliminar el producto de la colección original
         await productRef.delete();
-        console.log(`Producto ${productId} movido correctamente a 'terminados/${sanitizedModel}/products'.`);
+        console.log(`Producto ${productId} movido correctamente a terminados/${sanitizedModel}/products`);
     } catch (error) {
         console.error(`Error al mover el producto ${productId} a 'terminados':`, error);
     }
 }
-
 
 /**
  * Obtiene los IDs de los productos existentes en una colección.
@@ -144,6 +222,13 @@ export async function getProcessedIds(model) {
     }
 }
 
-export default { saveOrUpdateProduct, moveToTerminatedCollection, getProcessedIds };
+export default {
+    saveOrUpdateProduct,
+    moveToTerminatedCollection,
+    getProcessedIds,
+    saveOrUpdateComplement,
+    moveToTerminatedComplement,
+};
+
 
 
