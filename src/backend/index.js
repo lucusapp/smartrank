@@ -64,7 +64,6 @@ async function processExistingProducts(model, firebaseProducts) {
 }
 
 
-
 // Scraping de nuevos productos en Wallapop
 async function scrapeNewProducts(model, existingIds, page) {
   const searchUrl = `https://es.wallapop.com/app/search?filters_source=search_box&keywords=${encodeURIComponent(model)}`;
@@ -145,7 +144,6 @@ async function scrapeNewProducts(model, existingIds, page) {
     console.error("Error general al ejecutar el programa:", error);
   }
 })();
-
 
 
 

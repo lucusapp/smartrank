@@ -1,4 +1,5 @@
-
+"Samsung Galaxy S23 Plus"
+"Samsung Galaxy S23"
 "Samsung Galaxy A54"
 "Samsung Galaxy A34"
 "Samsung Galaxy A14"

@@ -123,7 +123,6 @@ export async function moveToTerminatedCollection(productId, model) {
     }
 }
 
-
 /**
  * Obtiene los IDs de los productos existentes en una colección.
  * @param {string} model - Nombre de la colección (modelo del producto).
