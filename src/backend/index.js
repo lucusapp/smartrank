@@ -2,8 +2,10 @@ import puppeteer from "puppeteer";
 import fs from "fs/promises";
 import { 
   saveOrUpdateProduct, 
-  moveToTerminatedCollection, 
-  getProcessedIds 
+  moveToTerminatedCollection,
+  moveToPendingCollection,  
+  getProcessedIds,
+  updateProductHistory 
 } from "./services/firestoreService.js";
 import { scrapeProductDetails } from "./services/scraper.js";
 
@@ -36,9 +38,9 @@ async function processExistingProducts(model, firebaseProducts) {
 
           // Detectar datos incompletos o scraping fallido
           if (!details) {
-              console.warn(`Datos incompletos o scraping fallido para el producto ${productId}. Moviendo a 'terminados'.`);
-              // Mueve el producto con sus datos existentes a la colección "terminados"
-              await moveToTerminatedCollection(productId, model);
+              console.warn(`Datos incompletos o scraping fallido para el producto ${productId}. Moviendo a 'pendientes'.`);
+              // Mueve el producto con sus datos existentes a la colección "pendientes"
+              await moveToPendingCollection(model, productId, { error: "Datos incompletos o scraping fallido" });
               continue;
           }
 
@@ -49,14 +51,29 @@ async function processExistingProducts(model, firebaseProducts) {
               continue;
           }
 
-          // Si los datos son válidos, actualiza o guarda el producto
-          console.log(`Actualizando datos del producto: ${productId}`);
-          await saveOrUpdateProduct(details, model);
+          // Si los datos son válidos, verifica si es un producto nuevo
+          const isNewProduct = await saveOrUpdateProduct(details, model);
+
+          if (isNewProduct) {
+              console.log(`Producto nuevo detectado: ${productId}. Registrando datos iniciales en history.`);
+              const initialHistory = {
+                  date: new Date().toISOString(),
+                  changes: {
+                      views: details.views || 0,
+                      favorites: details.favorites || 0,
+                      price: details.precio || 0,
+                  },
+              };
+              await updateProductHistory(productId, model, initialHistory);
+          } else {
+              console.log(`Producto existente actualizado: ${productId}`);
+          }
+
       } catch (error) {
           console.error(`Error procesando el producto ${productId}:`, error);
-          console.log(`Producto ${productId} será movido a 'terminados' debido al error.`);
-          // Manejo de errores: Mueve el producto a "terminados"
-          await moveToTerminatedCollection(productId, model);
+          console.log(`Producto ${productId} será movido a 'pendientes' debido al error.`);
+          // Manejo de errores: Mueve el producto a "pendientes"
+          await moveToPendingCollection(model, productId, { error: error.message });
       }
   }
 

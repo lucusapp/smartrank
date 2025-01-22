@@ -82,6 +82,13 @@ export async function saveOrUpdateProduct(product, model) {
     }
 }
 
+export async function updateProductHistory(productId, model, historyEntry) {
+    const productRef = db.collection("products").doc(model).collection("items").doc(productId);
+    await productRef.update({
+        history: admin.firestore.FieldValue.arrayUnion(historyEntry),
+    });
+}
+
 
 /**
  * Elimina un producto de la colección principal y lo transfiere a la subcolección "products" dentro de "terminados",
@@ -120,6 +127,41 @@ export async function moveToTerminatedCollection(productId, model) {
         console.log(`Producto ${productId} movido correctamente a 'terminados/${sanitizedModel}/products'.`);
     } catch (error) {
         console.error(`Error al mover el producto ${productId} a 'terminados':`, error);
+    }
+}
+
+
+export async function moveToPendingCollection(model, productId) {
+    try {
+        // Referencia al producto en su colección original
+        const originalProductRef = db.collection("products").doc(model).collection("items").doc(productId);
+        
+        // Obtener los datos existentes del producto
+        const originalProductSnapshot = await originalProductRef.get();
+
+        if (!originalProductSnapshot.exists) {
+            console.error(`Producto ${productId} no encontrado en la colección original.`);
+            return;
+        }
+
+        const productData = originalProductSnapshot.data();
+
+        // Crear referencia en la colección "pendientes"
+        const pendingRef = db.collection("pendientes").doc(model).collection("items").doc(productId);
+
+        // Mover el producto a "pendientes"
+        await pendingRef.set({
+            ...productData,
+            movedToPendingAt: admin.firestore.FieldValue.serverTimestamp(), // Registro de la fecha de movimiento
+        });
+
+        console.log(`Producto ${productId} movido a pendientes/${model}/items.`);
+
+        // Eliminar el producto de la colección original
+        await originalProductRef.delete();
+        console.log(`Producto ${productId} eliminado de la colección original.`);
+    } catch (error) {
+        console.error(`Error moviendo el producto ${productId} a pendientes:`, error);
     }
 }
 
