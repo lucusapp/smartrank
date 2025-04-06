@@ -22,9 +22,12 @@ async function readProductList(filePath) {
 
 // Procesar productos existentes en Firebase
 async function processExistingProducts(model, firebaseProducts) {
-  const browser = await puppeteer.launch({
-  args: ['--no-sandbox', '--disable-setuid-sandbox']
+const browser = await puppeteer.launch({
+  args: ['--no-sandbox', '--disable-setuid-sandbox'],
+  headless: true, // Asegúrate de que Puppeteer se ejecute en modo headless (sin interfaz gráfica)
+  executablePath: '/usr/bin/chromium-browser' // Ruta específica para el navegador en el entorno de CI, si es necesario
 });
+
   const page = await browser.newPage();
 
   for (const productId of firebaseProducts) {
