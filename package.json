@@ -6,7 +6,7 @@
     "firebase": "^11.0.2",
     "firebase-admin": "^12.7.0",
     "puppeteer": "^23.11.1",
-    "puppeteer-core": "^24.6.0"
+    "puppeteer-core": "^10.4.0"
   },
   "name": "smartrank",
   "version": "1.0.0",
