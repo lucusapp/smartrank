@@ -1,8 +1,8 @@
-name: Run Daily Main.js
+name: Run Daily App
 
 on:
   schedule:
-    - cron: '0 6 * * *' # Todos los días a las 06:00 UTC (ajusta si necesitas otra hora)
+    - cron: '0 6 * * *' # Ejecutar todos los días a las 06:00 UTC
   workflow_dispatch:
 
 jobs:
@@ -21,5 +21,11 @@ jobs:
       - name: Instalar dependencias
         run: npm install
 
+      - name: Crear archivo de credenciales Firebase
+        run: |
+          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > src/firebaseServiceAccount.json
+
       - name: Ejecutar aplicación
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: src/firebaseServiceAccount.json
         run: node src/backend/index.js
