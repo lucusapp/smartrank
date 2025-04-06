@@ -2,7 +2,7 @@ name: Run Daily App
 
 on:
   schedule:
-    - cron: '0 6 * * *' # Ejecutar todos los días a las 06:00 UTC
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -28,4 +28,5 @@ jobs:
       - name: Ejecutar aplicación
         env:
           GOOGLE_APPLICATION_CREDENTIALS: src/firebaseServiceAccount.json
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
         run: node src/backend/index.js
