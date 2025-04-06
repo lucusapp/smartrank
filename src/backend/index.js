@@ -1,4 +1,5 @@
-import puppeteer from "puppeteer";
+import puppeteer from 'puppeteer-core';
+import chromium from 'chrome-aws-lambda';
 import fs from "fs/promises";
 import { 
   saveOrUpdateProduct, 
@@ -8,6 +9,9 @@ import {
   updateProductHistory 
 } from "./services/firestoreService.js";
 import { scrapeProductDetails } from "./services/scraper.js";
+
+
+
 
 // Leer la lista de productos desde un archivo
 async function readProductList(filePath) {
@@ -22,10 +26,11 @@ async function readProductList(filePath) {
 
 // Procesar productos existentes en Firebase
 async function processExistingProducts(model, firebaseProducts) {
+// Reemplaza tu configuración de Puppeteer por esta:
 const browser = await puppeteer.launch({
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  headless: true, // Asegúrate de que Puppeteer se ejecute en modo headless (sin interfaz gráfica)
-  executablePath: '/usr/bin/chromium-browser' // Ruta específica para el navegador en el entorno de CI, si es necesario
+  executablePath: await chromium.executablePath, // Obtén la ruta del ejecutable de Chromium en el entorno
+  args: chromium.args,                          // Usa los argumentos recomendados por chromium-aws-lambda
+  headless: chromium.headless,                  // Habilita el modo headless
 });
 
   const page = await browser.newPage();

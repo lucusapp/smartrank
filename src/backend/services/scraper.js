@@ -24,11 +24,12 @@ async function readProductList(filePath) {
 
 // Función para extraer detalles de un producto
 async function scrapeProductDetails(productUrl) {
+// Reemplaza tu configuración de Puppeteer por esta:
 const browser = await puppeteer.launch({
-  args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  headless: true, // Asegúrate de que Puppeteer se ejecute en modo headless (sin interfaz gráfica)
-  executablePath: '/usr/bin/chromium-browser' // Ruta específica para el navegador en el entorno de CI, si es necesario
-});
+    executablePath: await chromium.executablePath, // Obtén la ruta del ejecutable de Chromium en el entorno
+    args: chromium.args,                          // Usa los argumentos recomendados por chromium-aws-lambda
+    headless: chromium.headless,                  // Habilita el modo headless
+  });
 
     const page = await browser.newPage();
 
