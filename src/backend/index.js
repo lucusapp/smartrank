@@ -118,7 +118,8 @@ async function scrapeNewProducts(model, existingIds, page) {
 }
 
 (async () => {
-  const filePath = "./product-list.txt"; // Archivo con la lista de modelos
+  const filePath = "./src/backend/product-list.txt"
+
 
   try {
     const models = await readProductList(filePath);
