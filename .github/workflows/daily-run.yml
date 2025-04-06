@@ -1,0 +1,33 @@
+name: Run Daily App
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  run-daily-job:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar repositorio
+        uses: actions/checkout@v3
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Crear archivo de credenciales Firebase
+        run: |
+          echo '${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}' > src/firebaseServiceAccount.json
+
+      - name: Ejecutar aplicación
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: src/firebaseServiceAccount.json
+          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+        run: node src/backend/index.js
+
