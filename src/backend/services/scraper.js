@@ -24,7 +24,9 @@ async function readProductList(filePath) {
 
 // Función para extraer detalles de un producto
 async function scrapeProductDetails(productUrl) {
-    const browser = await puppeteer.launch({ headless: true });
+    const browser = await puppeteer.launch({
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
     const page = await browser.newPage();
 
     try {
