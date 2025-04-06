@@ -4,7 +4,7 @@
     "express": "^4.21.1",
     "firebase": "^11.0.2",
     "firebase-admin": "^12.7.0",
-    "puppeteer": "^23.9.0"
+    "puppeteer": "^23.11.1"
   },
   "name": "smartrank",
   "version": "1.0.0",
