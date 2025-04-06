@@ -30,3 +30,4 @@ jobs:
           GOOGLE_APPLICATION_CREDENTIALS: src/firebaseServiceAccount.json
           FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
         run: node src/backend/index.js
+
